@@ -172,6 +172,7 @@ function aggregate() {
         o._lastPoDate = d;
         o.lastPurchasePrice = H.poItemPrice(r);
         o.lastVendor = H.poVendor(r) || o.lastVendor;
+        o.supplierName = H.poVendor(r) || o.supplierName;
       }
     }
   }
@@ -183,6 +184,7 @@ function baseItem(r) {
     sku: H.sku(r) || '',
     name: H.itemName(r) || '',
     supplier: H.supplierCode(r) || '',
+    supplierName: '',
     available: 0,
     cost: 0,
     lastPurchasePrice: 0,
@@ -202,6 +204,7 @@ function render() {
     { key: 'sku', label: 'SKU' },
     { key: 'name', label: 'Item Name' },
     { key: 'supplier', label: 'Supplier Code' },
+    { key: 'supplierName', label: 'Supplier Name' },
     { key: 'available', label: 'Available Stock' },
     { key: 'cost', label: 'Inventory Cost' },
     { key: 'lastPurchasePrice', label: 'Last Purchase Price' },
@@ -244,7 +247,7 @@ function render() {
         continue;
       }
       if (typeof v === 'number') v = v.toLocaleString();
-      if (c.key === 'name' || c.key === 'supplier') {
+      if (c.key === 'name' || c.key === 'supplier' || c.key === 'supplierName') {
         const title = v ?? '';
         cells.push(`<td title="${escapeHtml(title)}">${v ?? ''}</td>`);
       } else {
@@ -293,7 +296,7 @@ function exportCsvAll() {
   const monthsDisplay = [...state.months].reverse();
   const header = ['Item ID','SKU','Item Name','Supplier Code','Available Stock','Inventory Cost','Last Purchase Price','Outstanding PO Qty',...monthsDisplay];
   const data = rows.map(r => [
-    r.itemId, r.sku, r.name, r.supplier, r.available, r.cost, r.lastPurchasePrice, r.outstandingQty,
+    r.itemId, r.sku, r.name, r.supplier, r.supplierName || r.lastVendor || '', r.available, r.cost, r.lastPurchasePrice, r.outstandingQty,
     ...monthsDisplay.map(m => r.salesByMonth[m] || 0)
   ]);
   const csv = [header.join(','), ...data.map(row => row.map(safeCsv).join(','))].join('\n');
@@ -310,10 +313,10 @@ function exportCsvFiltered() {
   // Export only filtered keys and include Order Qty
   const keys = state.filteredKeys.length ? state.filteredKeys : Array.from(state.byItem.keys());
   const monthsDisplay = [...state.months].reverse();
-  const header = ['Item ID','SKU','Item Name','Supplier Code','Available Stock','Inventory Cost','Last Purchase Price','Outstanding PO Qty','Order Qty',...monthsDisplay];
+  const header = ['Item ID','SKU','Item Name','Supplier Code','Supplier Name','Available Stock','Inventory Cost','Last Purchase Price','Outstanding PO Qty','Order Qty',...monthsDisplay];
   const rows = keys.map(k => state.byItem.get(k)).filter(Boolean);
   const data = rows.map(r => [
-    r.itemId, r.sku, r.name, r.supplier, r.available, r.cost, r.lastPurchasePrice, r.outstandingQty, r.orderQty || 0,
+    r.itemId, r.sku, r.name, r.supplier, r.supplierName || r.lastVendor || '', r.available, r.cost, r.lastPurchasePrice, r.outstandingQty, r.orderQty || 0,
     ...monthsDisplay.map(m => r.salesByMonth[m] || 0)
   ]);
   const csv = [header.join(','), ...data.map(row => row.map(safeCsv).join(','))].join('\n');

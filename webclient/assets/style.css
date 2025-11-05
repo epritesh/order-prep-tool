@@ -59,6 +59,10 @@ body { margin: 0; padding: 16px; font-family: Inter, system-ui, -apple-system, S
 #grid th:nth-child(4),
 #grid td:nth-child(4) { max-width: 160px; width: 160px; overflow: hidden; text-overflow: ellipsis; }
 
+/* New Supplier Name column (5) */
+#grid th:nth-child(5),
+#grid td:nth-child(5) { max-width: 240px; width: 240px; overflow: hidden; text-overflow: ellipsis; }
+
 /* passcode gate */
 .lock { position: fixed; inset: 0; background: rgba(0,0,0,0.06); backdrop-filter: blur(2px); display: grid; place-items: center; z-index: 1000; }
 .lock-card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; width: 320px; box-shadow: 0 12px 32px rgba(2,6,23,0.12); display: grid; gap: 8px; }
