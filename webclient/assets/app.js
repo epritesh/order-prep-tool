@@ -273,14 +273,7 @@ function render() {
     });
   });
 
-  // Row click selection (when not in current-only mode)
-  el.body.querySelectorAll('tr[data-key]').forEach(tr => {
-    tr.addEventListener('click', () => {
-      state.selectedKey = tr.getAttribute('data-key');
-      render();
-      renderSummary();
-    });
-  });
+  // Row click selection handled via delegated listener in init()
 
   // Update pager label
   el.pagerLabel.textContent = `${Math.min(state.currentIndex+1, Math.max(1, state.filteredKeys.length))} of ${state.filteredKeys.length}`;
@@ -391,6 +384,24 @@ function init() {
   if (el.showCurrentOnly) el.showCurrentOnly.addEventListener('change', () => { state.showCurrentOnly = el.showCurrentOnly.checked; render(); });
   if (el.prevBtn) el.prevBtn.addEventListener('click', () => { if (state.filteredKeys.length) { state.currentIndex = Math.max(0, state.currentIndex - 1); state.selectedKey = state.filteredKeys[state.currentIndex]; render(); updatePagerButtons(); }});
   if (el.nextBtn) el.nextBtn.addEventListener('click', () => { if (state.filteredKeys.length) { state.currentIndex = Math.min(state.filteredKeys.length - 1, state.currentIndex + 1); state.selectedKey = state.filteredKeys[state.currentIndex]; render(); updatePagerButtons(); }});
+
+  // Delegated row selection: clicking anywhere in a data row selects it
+  el.body?.addEventListener('click', (e) => {
+    const row = e.target.closest('tr[data-key]');
+    if (row && el.body.contains(row)) {
+      state.selectedKey = row.getAttribute('data-key');
+      if (!state.showCurrentOnly) render();
+      renderSummary();
+    }
+  });
+  // Selecting an order input also selects the row
+  el.body?.addEventListener('focusin', (e) => {
+    const inp = e.target.closest('.order-input');
+    if (inp) {
+      const key = inp.getAttribute('data-key');
+      if (key) { state.selectedKey = key; renderSummary(); }
+    }
+  });
 
   // auto-load
   if (maybeGate()) {
