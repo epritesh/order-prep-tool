@@ -404,6 +404,8 @@ function init() {
 
   // Delegated row selection: clicking anywhere in a data row selects it
   el.body?.addEventListener('click', (e) => {
+    // Don't treat clicks inside inputs as row clicks to avoid re-render/focus loss
+    if (e.target.closest('input, textarea, select, button')) return;
     const row = e.target.closest('tr[data-key]');
     if (row && el.body.contains(row)) {
       state.selectedKey = row.getAttribute('data-key');
