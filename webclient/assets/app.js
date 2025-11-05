@@ -542,17 +542,18 @@ function renderSummary() {
   if (!r) return;
   // KPIs
   const fmt = (n) => (typeof n === 'number' ? n.toLocaleString() : (n ?? '—'));
+  const fmtCRC = (n) => (typeof n === 'number' ? ('CRC ' + n.toLocaleString()) : '—');
   const byId = (id) => document.getElementById(id);
   const dateStr = r._lastPoDate ? new Date(r._lastPoDate).toISOString().slice(0,10) : '—';
   const vendor = r.lastVendor || '—';
-  if (byId('kpiLastPrice')) byId('kpiLastPrice').textContent = fmt(r.lastPurchasePrice);
+  if (byId('kpiLastPrice')) byId('kpiLastPrice').textContent = fmtCRC(r.lastPurchasePrice);
   if (byId('kpiLastDate')) byId('kpiLastDate').textContent = dateStr;
   if (byId('kpiVendor')) byId('kpiVendor').textContent = vendor;
-  if (byId('kpiCost')) byId('kpiCost').textContent = fmt(r.cost);
+  if (byId('kpiCost')) byId('kpiCost').textContent = fmtCRC(r.cost);
   if (byId('kpiAvailable')) byId('kpiAvailable').textContent = fmt(r.available);
   if (byId('kpiOutstanding')) byId('kpiOutstanding').textContent = fmt(r.outstandingQty);
   const invValue = (r && r.available && r.cost) ? (Number(r.available) * Number(r.cost)) : null;
-  if (byId('kpiInventoryValue')) byId('kpiInventoryValue').textContent = fmt(invValue);
+  if (byId('kpiInventoryValue')) byId('kpiInventoryValue').textContent = fmtCRC(invValue);
 
   // Sparkline SVG
   const svg = document.getElementById('sparkline');
