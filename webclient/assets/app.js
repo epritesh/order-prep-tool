@@ -551,6 +551,8 @@ function renderSummary() {
   if (byId('kpiCost')) byId('kpiCost').textContent = fmt(r.cost);
   if (byId('kpiAvailable')) byId('kpiAvailable').textContent = fmt(r.available);
   if (byId('kpiOutstanding')) byId('kpiOutstanding').textContent = fmt(r.outstandingQty);
+  const invValue = (r && r.available && r.cost) ? (Number(r.available) * Number(r.cost)) : null;
+  if (byId('kpiInventoryValue')) byId('kpiInventoryValue').textContent = fmt(invValue);
 
   // Sparkline SVG
   const svg = document.getElementById('sparkline');
