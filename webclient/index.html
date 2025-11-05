@@ -18,14 +18,6 @@
   </header>
 
   <section class="controls">
-    <label>
-      Data folder
-      <select id="dataLocation">
-        <option value="/data/">/data/ (absolute)</option>
-        <option value="data/">data/ (relative to webclient)</option>
-        <option value="/">project root</option>
-      </select>
-    </label>
     <button id="reloadBtn">Reload Data</button>
     <span id="status" class="status">Idle</span>
   </section>
@@ -59,7 +51,7 @@
   </section>
 
   <section class="foot">
-    <small>Tip: For Zoho Catalyst (Root Path ./webclient), put CSVs under webclient/data and choose "data/ (relative to webclient)".</small>
+    <small>Data path is fixed: files are loaded from <code>data/</code> (relative to <code>webclient/</code>).</small>
   </section>
 
   <script type="module" src="assets/app.js"></script>

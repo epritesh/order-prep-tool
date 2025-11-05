@@ -43,8 +43,7 @@ python -m http.server 8080
   - Framework: `Static`
   - Root Path: `./webclient`
   - Toggle Auto Deploy: `On` (hot deploy on push)
-- Place CSVs inside `webclient/data/` in your repo (so they are included in the deploy)
-  - In the app UI, choose "data/ (relative to webclient)" in the Data folder selector
+- Place CSVs inside `webclient/data/` in your repo (so they are included in the deploy). The app loads files from `data/` (relative to `webclient/`).
 - No server functions required
 
 ## Data expectations

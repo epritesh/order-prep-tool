@@ -12,7 +12,7 @@ These rules help AI agents work productively in this repo. Keep guidance concret
 
 ## Webclient conventions
 - Entry: `webclient/index.html`; logic: `webclient/assets/app.js`; styles: `webclient/assets/style.css`.
-- Data path selection: UI toggle between `/data/` and project root; place CSVs under `/data/` when deploying (preferred).
+- Data path is fixed to `data/` relative to `webclient/` (put CSVs in `webclient/data/`).
 - Header normalization: app supports bilingual/variant headers. Accessors unify names like `Item_ID` vs `Product ID`, `Item_SKU` vs `SKU`, `Available_Stock` vs `AvailableQuantity`, and `Cost` vs `Rate/Average Cost`.
 - Join key: composite of `SKU` and `Item_ID/Product ID` when both exist; otherwise falls back to either if available, else `Item_Name`.
 - Sales window: computed dynamically for the last 24 months from the current month (uses `Month_Year` format `YYYY-MM`).
@@ -27,7 +27,7 @@ These rules help AI agents work productively in this repo. Keep guidance concret
 - Local preview: run a static server from repo root and open `/webclient/`. Example: `python -m http.server 8080`.
 - Deploy (Zoho Catalyst):
 	- Framework: Static; Root Path: `./webclient`; enable Auto Deploy (hot deploy).
-	- Put CSVs under `webclient/data/` in the repo (deployment root). In UI, choose `data/ (relative)` as data path.
+	- Put CSVs under `webclient/data/` in the repo. Data path is fixed; no UI toggle.
 - Data updates: commit new `SalesHistory_Updated_<MonYYYY>.csv` to `webclient/data/`; the app auto-detects the current month filename (falls back to `SalesHistory_Updated_Oct2025.csv`).
 - Export: UI button generates a CSV snapshot of the rendered table.
 

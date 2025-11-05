@@ -7,7 +7,8 @@ const state = {
   itemRows: [],
   months: [], // last 24 months labels like '2025-11'
   byItem: new Map(), // key -> aggregated object
-  dataBasePath: '/data/',
+  // Fixed data path for deployed app (files under webclient/data)
+  dataBasePath: 'data/',
   // filtering / navigation
   skuFilterSet: null, // Set of SKUs if filtering
   filteredKeys: [],
@@ -17,7 +18,6 @@ const state = {
 
 const el = {
   status: document.getElementById('status'),
-  dataLocation: document.getElementById('dataLocation'),
   reloadBtn: document.getElementById('reloadBtn'),
   head: document.getElementById('grid-head'),
   body: document.getElementById('grid-body'),
@@ -61,7 +61,7 @@ async function fetchTextMaybe(paths) {
 
 async function loadCsv(filename) {
   const base = state.dataBasePath;
-  // Try /data/ then root
+  // Fixed path; still try root as a dev fallback
   const txt = await fetchTextMaybe([`${base}${filename}`, `/${filename}`]);
   if (!txt) return [];
   return new Promise((resolve) => {
@@ -335,9 +335,6 @@ async function resolveSalesFilename() {
 }
 
 function init() {
-  el.dataLocation.addEventListener('change', () => {
-    state.dataBasePath = el.dataLocation.value;
-  });
   el.reloadBtn.addEventListener('click', () => loadAll());
   if (el.exportFilteredBtn) el.exportFilteredBtn.addEventListener('click', () => exportCsvFiltered());
   if (el.exportAllBtn) el.exportAllBtn.addEventListener('click', () => exportCsvAll());
