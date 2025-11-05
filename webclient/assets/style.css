@@ -50,6 +50,12 @@ body {
 .badge.warn { background: #fff8e1; color: #a57a00; }
 .badge.err { background: #ffebee; color: #b71c1c; }
 
+/* Constrain wide columns: Item Name (3) and Supplier Code (4) */
+#grid th:nth-child(3),
+#grid td:nth-child(3) { max-width: 420px; width: 420px; overflow: hidden; text-overflow: ellipsis; }
+#grid th:nth-child(4),
+#grid td:nth-child(4) { max-width: 160px; width: 160px; overflow: hidden; text-overflow: ellipsis; }
+
 /* passcode gate */
 .lock { position: fixed; inset: 0; background: rgba(0,0,0,0.06); backdrop-filter: blur(2px); display: grid; place-items: center; z-index: 1000; }
 .lock-card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; width: 320px; box-shadow: 0 12px 32px rgba(2,6,23,0.12); display: grid; gap: 8px; }
