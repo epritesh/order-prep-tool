@@ -17,6 +17,16 @@
     <p>Spreadsheet view: last 24 months sales, outstanding POs, stock, last purchase price, and inventory cost.</p>
   </header>
 
+  <!-- lightweight passcode gate (optional) -->
+  <div id="lock" class="lock" style="display:none">
+    <div class="lock-card">
+      <h2>Enter passcode</h2>
+      <input id="passInput" type="password" placeholder="Passcode" />
+      <button id="unlockBtn">Unlock</button>
+      <div id="lockMsg" class="lock-msg"></div>
+    </div>
+  </div>
+
   <section class="controls">
     <button id="reloadBtn">Reload Data</button>
     <span id="status" class="status">Idle</span>
@@ -78,6 +88,7 @@
     <small>Data path is fixed: files are loaded from <code>data/</code> (relative to <code>webclient/</code>).</small>
   </section>
 
+  <script src="assets/pass-config.js"></script>
   <script type="module" src="assets/app.js"></script>
 </body>
 </html>

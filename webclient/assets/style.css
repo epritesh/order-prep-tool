@@ -35,3 +35,11 @@ h1 { font-size: 20px; margin: 0 0 4px; }
 .badge.ok { background: #e8f5e9; color: #1b5e20; }
 .badge.warn { background: #fff8e1; color: #a57a00; }
 .badge.err { background: #ffebee; color: #b71c1c; }
+
+/* passcode gate */
+.lock { position: fixed; inset: 0; background: rgba(0,0,0,0.06); backdrop-filter: blur(2px); display: grid; place-items: center; z-index: 1000; }
+.lock-card { background: #fff; border: 1px solid #e6e6e6; border-radius: 10px; padding: 16px; width: 320px; box-shadow: 0 6px 24px rgba(0,0,0,0.06); display: grid; gap: 8px; }
+.lock-card h2 { margin: 0 0 4px; font-size: 16px; }
+#passInput { padding: 8px; font-size: 14px; width: 100%; }
+#unlockBtn { padding: 8px 10px; font-size: 14px; }
+.lock-msg { font-size: 12px; color: #b71c1c; min-height: 16px; }

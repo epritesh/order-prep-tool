@@ -363,7 +363,9 @@ function init() {
   if (el.nextBtn) el.nextBtn.addEventListener('click', () => { if (state.filteredKeys.length) { state.currentIndex = Math.min(state.filteredKeys.length - 1, state.currentIndex + 1); state.selectedKey = state.filteredKeys[state.currentIndex]; render(); updatePagerButtons(); }});
 
   // auto-load
-  loadAll();
+  if (maybeGate()) {
+    loadAll();
+  }
 }
 
 init();
@@ -386,6 +388,38 @@ function updatePagerButtons() {
 
 function escapeHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// --- lightweight passcode gate ---
+function maybeGate() {
+  const required = typeof window.PANTERA_PASSCODE === 'string' && window.PANTERA_PASSCODE.length > 0;
+  const lock = document.getElementById('lock');
+  if (!required || !lock) return true; // no gate
+  // already unlocked this session?
+  try {
+    if (sessionStorage.getItem('pantera_unlocked') === '1') return true;
+  } catch {}
+
+  lock.style.display = 'grid';
+  const passInput = document.getElementById('passInput');
+  const unlockBtn = document.getElementById('unlockBtn');
+  const lockMsg = document.getElementById('lockMsg');
+  const tryUnlock = () => {
+    const ok = passInput.value === window.PANTERA_PASSCODE;
+    if (ok) {
+      lock.style.display = 'none';
+      try { sessionStorage.setItem('pantera_unlocked','1'); } catch {}
+      loadAll();
+    } else {
+      lockMsg.textContent = 'Invalid passcode';
+      passInput.focus();
+      passInput.select();
+    }
+  };
+  unlockBtn?.addEventListener('click', tryUnlock);
+  passInput?.addEventListener('keydown', (e) => { if (e.key === 'Enter') tryUnlock(); });
+  passInput?.focus();
+  return false;
 }
 
 function renderSummary() {

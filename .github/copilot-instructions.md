@@ -42,6 +42,7 @@ These rules help AI agents work productively in this repo. Keep guidance concret
 - Be tolerant of missing `Items.csv`; render with zeros for stock/cost when absent.
 - Treat missing or malformed dates as null; only use rows with parseable `YYYY-MM` for monthly bucketing.
 - Don’t introduce backend code; keep all logic client-side or optional offline transforms.
+- Optional passcode gate in `webclient/assets/pass-config.js` is client-only and not real security; avoid relying on it for sensitive data.
 
 ## When extending
 - Add calculated columns by enriching `baseItem()` and the render loop.

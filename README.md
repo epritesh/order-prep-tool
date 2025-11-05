@@ -58,3 +58,12 @@ python -m http.server 8080
 - Large CSVs (18k–21k rows) are supported in-browser via PapaParse; initial load can take a few seconds.
 - You can add more columns to Items.csv; the app uses heuristics to find `Available_Stock` and `Cost`.
 - Click a row (or use the pager with "Show current only") to update the KPI cards and sparkline for the current item.
+
+## Optional passcode gate (client-only)
+
+For a lightweight barrier (not secure), the app can prompt for a passcode before loading data.
+
+- Configure in `webclient/assets/pass-config.js`:
+  - Set `window.PANTERA_PASSCODE = '<your pass>'`.
+  - Leave empty (`''`) to disable the prompt.
+- The passcode check runs client-side and can be bypassed by anyone who views source. Use platform-level auth if you need real protection.
