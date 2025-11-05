@@ -348,8 +348,9 @@ async function loadAll() {
   aggregate();
   applyPersistedOrderQtys();
   render();
-  // Clearer status: aggregated vs items master
-  setStatus(`Aggregated items: ${state.byItem.size.toLocaleString()} • Items master: ${items.length.toLocaleString()}`);
+  // Clearer status: aggregated vs items master and total with outstanding POs
+  const outstandingCount = Array.from(state.byItem.values()).reduce((n, r) => n + ((r.outstandingQty||0) > 0 ? 1 : 0), 0);
+  setStatus(`Aggregated items: ${state.byItem.size.toLocaleString()} • Items master: ${items.length.toLocaleString()} • Outstanding POs: ${outstandingCount.toLocaleString()} items`);
 }
 
 async function resolveSalesFilename() {
