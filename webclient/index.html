@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pantera Order Prep - Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/style.css" />
+  <!-- Minimal table styles; no framework dependency -->
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+</head>
+<body>
+  <header>
+    <h1>Pantera Order Preparation</h1>
+    <p>Spreadsheet view: last 24 months sales, outstanding POs, stock, last purchase price, and inventory cost.</p>
+  </header>
+
+  <section class="controls">
+    <label>
+      Data folder
+      <select id="dataLocation">
+        <option value="/data/">/data/ (absolute)</option>
+        <option value="data/">data/ (relative to webclient)</option>
+        <option value="/">project root</option>
+      </select>
+    </label>
+    <button id="reloadBtn">Reload Data</button>
+    <span id="status" class="status">Idle</span>
+  </section>
+
+  <section class="sku-controls">
+    <div class="sku-left">
+      <label for="skuList">Paste SKUs (one per line, comma, or space):</label>
+      <textarea id="skuList" placeholder="800-4534\n118-119\n..."></textarea>
+    </div>
+    <div class="sku-right">
+      <button id="applySkusBtn">Apply SKUs</button>
+      <button id="clearSkusBtn">Clear</button>
+      <label class="inline"><input type="checkbox" id="showCurrentOnly"> Show current only</label>
+      <div class="pager">
+        <button id="prevBtn">Prev</button>
+        <span id="pagerLabel">0 of 0</span>
+        <button id="nextBtn">Next</button>
+      </div>
+      <div class="exports">
+        <button id="exportFilteredBtn">Export Filtered CSV</button>
+        <button id="exportAllBtn">Export All CSV</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="table-wrap">
+    <table id="grid">
+      <thead id="grid-head"></thead>
+      <tbody id="grid-body"></tbody>
+    </table>
+  </section>
+
+  <section class="foot">
+    <small>Tip: For Zoho Catalyst (Root Path ./webclient), put CSVs under webclient/data and choose "data/ (relative to webclient)".</small>
+  </section>
+
+  <script type="module" src="assets/app.js"></script>
+</body>
+</html>

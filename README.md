@@ -38,15 +38,20 @@ python -m http.server 8080
 
 ## Deploy to Zoho Catalyst
 
-- Use Catalyst Static Web App to host the `webclient/` folder
-- Place CSVs under `/data/` at the same level as `webclient/` or at the root
+- Create a Slate deployment from your GitHub repo
+  - Deployment Source: Repository, Branch: `main`
+  - Framework: `Static`
+  - Root Path: `./webclient`
+  - Toggle Auto Deploy: `On` (hot deploy on push)
+- Place CSVs inside `webclient/data/` in your repo (so they are included in the deploy)
+  - In the app UI, choose "data/ (relative to webclient)" in the Data folder selector
 - No server functions required
 
 ## Data expectations
 
 - CSVs must be UTF-8 encoded; dates in `YYYY-MM` or `YYYY-MM-DD`
 - Join keys: the app groups by a composite key of `SKU` and `Item_ID`/`Product ID` when present; otherwise falls back to item name.
-- Purchase orders: outstanding quantity is `QuantityOrdered − QuantityReceived` (min 0)
+- Purchase orders: outstanding quantity is `QuantityOrdered − QuantityReceived` (min 0), excluding rows with status `Billed` or `Closed`.
 
 ## Notes
 
