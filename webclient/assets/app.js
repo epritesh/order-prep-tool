@@ -223,6 +223,10 @@ function render() {
   state.filteredKeys = entries.map(([k]) => k);
 
   const rows = entries.map(([, v]) => v);
+  // Ensure there's a selected row for KPIs/chart
+  if (!state.selectedKey || !state.filteredKeys.includes(state.selectedKey)) {
+    state.selectedKey = state.filteredKeys[state.currentIndex] || state.filteredKeys[0] || null;
+  }
   const html = [];
   rows.forEach((r, idx) => {
     const cells = [];
@@ -394,6 +398,7 @@ function applySkus() {
   const tokens = text.split(/[\s,;]+/).map(s => s.trim()).filter(Boolean);
   state.skuFilterSet = new Set(tokens);
   state.currentIndex = 0;
+  state.selectedKey = null; // force auto-select of first after filter
   render();
   updatePagerButtons();
 }
@@ -495,7 +500,7 @@ function renderSummary() {
   // Sparkline SVG
   const svg = document.getElementById('sparkline');
   if (!svg) return;
-  const W = 400, H = 80, P = 4;
+  const W = 600, H = 120, P = 4;
   const vals = state.months.map(m => r.salesByMonth[m] || 0);
   const max = Math.max(1, ...vals);
   const points = vals.map((v, i) => {
