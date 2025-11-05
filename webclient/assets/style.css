@@ -46,6 +46,8 @@ body { margin: 0; padding: 16px; font-family: Inter, system-ui, -apple-system, S
 #grid tbody tr:nth-child(even) { background: var(--row-alt); }
  #grid tbody tr:hover { background: var(--accent); }
 .current-row { outline: 2px solid var(--brand); background: var(--accent) !important; }
+.group-row { background: rgba(63,81,181,0.08) !important; font-weight: 600; cursor: pointer; }
+.group-row .toggle { font-weight: 700; margin-right: 6px; }
 .badge { padding: 2px 6px; border-radius: 10px; font-size: 11px; }
 .badge.ok { background: #e8f5e9; color: #1b5e20; }
 .badge.warn { background: #fff8e1; color: #a57a00; }
@@ -65,6 +67,14 @@ body { margin: 0; padding: 16px; font-family: Inter, system-ui, -apple-system, S
 #passInput { padding: 8px; font-size: 14px; width: 100%; }
 #unlockBtn { padding: 8px 10px; font-size: 14px; }
 .lock-msg { font-size: 12px; color: #b71c1c; min-height: 16px; }
+
+/* toast */
+#toast { position: fixed; top: 12px; right: 12px; display: grid; gap: 8px; z-index: 2000; }
+.toast { background: var(--card); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; box-shadow: 0 8px 20px rgba(0,0,0,0.12); animation: fadein 120ms ease-out, fadeout 200ms ease-in 2800ms forwards; }
+.toast.ok { border-color: #34d399; }
+.toast.err { border-color: #ef4444; }
+@keyframes fadein { from { opacity: 0; transform: translateY(-4px);} to { opacity: 1; transform: translateY(0);} }
+@keyframes fadeout { to { opacity: 0; transform: translateY(-4px);} }
 
 @media (max-width: 900px){
   .summary{ grid-template-columns: 1fr; }

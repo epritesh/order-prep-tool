@@ -42,7 +42,8 @@ function monthKey(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padSt
 
 function computeLast24Months() {
   const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), 1);
+  // Exclude the current month; start from previous month
+  const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   const months = [];
   for (let i=23; i>=0; i--) {
     const d = new Date(start.getFullYear(), start.getMonth()-i, 1);
@@ -338,11 +339,15 @@ async function loadAll() {
   computeLast24Months();
 
   const salesName = await resolveSalesFilename();
-  const [sales, pos, items] = await Promise.all([
+  const [sales, pos] = await Promise.all([
     loadCsv(salesName),
     loadCsv('Purchase_Order.csv'),
-    loadCsv('Items.csv'),
   ]);
+  // Items master: allow both "Items.csv" and fallback to "Item.csv"
+  let items = await loadCsv('Items.csv');
+  if (!items || items.length === 0) {
+    items = await loadCsv('Item.csv');
+  }
   state.salesRows = sales;
   state.poRows = pos;
   state.itemRows = items;
@@ -361,7 +366,9 @@ async function resolveSalesFilename() {
   // Also generate guess for current month label
   const now = new Date();
   const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  candidates.unshift(`SalesHistory_Updated_${monthNames[now.getMonth()]}${now.getFullYear()}.csv`);
+  // Use previous month to avoid selecting a month with no data yet
+  const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  candidates.unshift(`SalesHistory_Updated_${monthNames[prev.getMonth()]}${prev.getFullYear()}.csv`);
   for (const c of candidates) {
     const txt = await fetchTextMaybe([`${state.dataBasePath}${c}`, `/${c}`]);
     if (txt) return c;
