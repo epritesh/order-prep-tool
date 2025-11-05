@@ -95,14 +95,19 @@ const H = {
   poQtyReceived: (r) => num(r['QuantityReceived'] || r['Qty Received'] || r['Quantity Received']),
   poVendor: (r) => r['Vendor Name'] || r['Vendor'] || r['Supplier'],
   // Items master
-  available: (r) => num(r['Available_Stock'] || r['Available Stock'] || r['AvailableQuantity'] || r['Available Qty'] || r['Stock Available'] || r['Available']),
-  cost: (r) => num(r['Cost'] || r['Rate'] || r['Average Cost'] || r['Inventory Cost']),
+  available: (r) => num(
+    r['Available_Stock'] || r['Available Stock'] || r['AvailableQuantity'] || r['Available Qty'] || r['Stock Available'] || r['Stock On Hand'] || r['Stock on Hand'] || r['StockOnHand'] || r['Available']
+  ),
+  cost: (r) => num(
+    r['Cost'] || r['Purchase Rate'] || r['Purchase Price'] || r['Average Cost'] || r['Inventory Cost'] || r['Rate']
+  ),
 };
 
 function num(v) {
   if (v === undefined || v === null || v === '') return 0;
   if (typeof v === 'number') return v;
-  const s = String(v).replace(/[,\s]/g, '');
+  // Strip currency codes/symbols (e.g., "CRC", "$"), keep digits, minus and decimal point
+  const s = String(v).replace(/[\s,]/g, '').replace(/[^0-9.\-]/g, '');
   const n = Number(s);
   return isFinite(n) ? n : 0;
 }
