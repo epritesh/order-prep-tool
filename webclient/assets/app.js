@@ -11,6 +11,7 @@ const state = {
   dataBasePath: 'data/',
   // filtering / navigation
   skuFilterSet: null, // Set of SKUs if filtering
+  skuFilterPatterns: null, // Array<RegExp> for wildcard filtering
   filteredKeys: [],
   currentIndex: 0,
   showCurrentOnly: false,
@@ -218,7 +219,12 @@ function render() {
   // Rows
   let entries = Array.from(state.byItem.entries());
   // Apply SKU filter if present
-  if (state.skuFilterSet && state.skuFilterSet.size > 0) {
+  if (state.skuFilterPatterns && state.skuFilterPatterns.length > 0) {
+    entries = entries.filter(([k, v]) => {
+      const sku = String(v.sku || '').trim();
+      return state.skuFilterPatterns.some(re => re.test(sku));
+    });
+  } else if (state.skuFilterSet && state.skuFilterSet.size > 0) {
     entries = entries.filter(([k, v]) => v.sku && state.skuFilterSet.has(String(v.sku).trim()));
   }
   state.filteredKeys = entries.map(([k]) => k);
@@ -381,7 +387,14 @@ function init() {
 
   // SKU filter wiring
   if (el.applySkusBtn) el.applySkusBtn.addEventListener('click', applySkus);
-  if (el.clearSkusBtn) el.clearSkusBtn.addEventListener('click', () => { state.skuFilterSet = null; state.currentIndex = 0; render(); updatePagerButtons(); });
+  if (el.clearSkusBtn) el.clearSkusBtn.addEventListener('click', () => { 
+    state.skuFilterSet = null; 
+    state.skuFilterPatterns = null;
+    state.currentIndex = 0; 
+    state.selectedKey = null;
+    render(); 
+    updatePagerButtons(); 
+  });
   if (el.showCurrentOnly) el.showCurrentOnly.addEventListener('change', () => { state.showCurrentOnly = el.showCurrentOnly.checked; render(); });
   if (el.prevBtn) el.prevBtn.addEventListener('click', () => { if (state.filteredKeys.length) { state.currentIndex = Math.max(0, state.currentIndex - 1); state.selectedKey = state.filteredKeys[state.currentIndex]; render(); updatePagerButtons(); }});
   if (el.nextBtn) el.nextBtn.addEventListener('click', () => { if (state.filteredKeys.length) { state.currentIndex = Math.min(state.filteredKeys.length - 1, state.currentIndex + 1); state.selectedKey = state.filteredKeys[state.currentIndex]; render(); updatePagerButtons(); }});
@@ -414,13 +427,25 @@ init();
 
 function applySkus() {
   const text = (el.skuList?.value || '').trim();
-  if (!text) { state.skuFilterSet = null; state.currentIndex = 0; render(); updatePagerButtons(); return; }
+  if (!text) { state.skuFilterSet = null; state.skuFilterPatterns = null; state.currentIndex = 0; render(); updatePagerButtons(); return; }
   const tokens = text.split(/[\s,;]+/).map(s => s.trim()).filter(Boolean);
   state.skuFilterSet = new Set(tokens);
+  state.skuFilterPatterns = makeSkuPatterns(tokens);
   state.currentIndex = 0;
   state.selectedKey = null; // force auto-select of first after filter
   render();
   updatePagerButtons();
+}
+
+// Build case-insensitive regex patterns from wildcard tokens (supports * and ?)
+function makeSkuPatterns(tokens) {
+  const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return tokens.map(t => {
+    // If token contains * or ?, treat as wildcard; otherwise exact
+    const hasWildcard = /[\*\?]/.test(t);
+    const body = esc(t).replace(/\\\*/g, '.*').replace(/\\\?/g, '.');
+    return new RegExp('^' + body + '$', 'i');
+  });
 }
 
 function updatePagerButtons() {
