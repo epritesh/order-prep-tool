@@ -20,6 +20,7 @@ const state = {
 const el = {
   status: document.getElementById('status'),
   reloadBtn: document.getElementById('reloadBtn'),
+  themeToggle: document.getElementById('themeToggle'),
   head: document.getElementById('grid-head'),
   body: document.getElementById('grid-body'),
   exportCsvBtn: document.getElementById('exportCsvBtn'),
@@ -232,7 +233,12 @@ function render() {
         continue;
       }
       if (typeof v === 'number') v = v.toLocaleString();
-      cells.push(`<td>${v ?? ''}</td>`);
+      if (c.key === 'name' || c.key === 'supplier') {
+        const title = v ?? '';
+        cells.push(`<td title="${escapeHtml(title)}">${v ?? ''}</td>`);
+      } else {
+        cells.push(`<td>${v ?? ''}</td>`);
+      }
     }
     // Render sales columns with most recent on the left
     for (const m of monthsDisplay) {
@@ -255,7 +261,10 @@ function render() {
     inp.addEventListener('input', (e) => {
       const key = inp.getAttribute('data-key');
       const row = state.byItem.get(key);
-      if (row) row.orderQty = num(inp.value);
+      if (row) {
+        row.orderQty = num(inp.value);
+        persistOrderQty(key, row.orderQty);
+      }
     });
   });
 
@@ -335,6 +344,7 @@ async function loadAll() {
   state.itemRows = items;
 
   aggregate();
+  applyPersistedOrderQtys();
   render();
   setStatus(`Loaded ${state.byItem.size} items | Sales ${sales.length} | POs ${pos.length} | Items ${items.length}`);
 }
@@ -357,6 +367,9 @@ async function resolveSalesFilename() {
 
 function init() {
   el.reloadBtn.addEventListener('click', () => loadAll());
+  // Theme toggle and initial theme
+  applySavedTheme();
+  if (el.themeToggle) el.themeToggle.addEventListener('click', toggleTheme);
   if (el.exportFilteredBtn) el.exportFilteredBtn.addEventListener('click', () => exportCsvFiltered());
   if (el.exportAllBtn) el.exportAllBtn.addEventListener('click', () => exportCsvAll());
 
@@ -393,6 +406,40 @@ function updatePagerButtons() {
 
 function escapeHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// --- persist order qtys ---
+function getQtyStore(){
+  try {
+    const raw = localStorage.getItem('pantera_order_qtys');
+    return raw ? JSON.parse(raw) : {};
+  } catch { return {}; }
+}
+function setQtyStore(obj){
+  try { localStorage.setItem('pantera_order_qtys', JSON.stringify(obj)); } catch {}
+}
+function persistOrderQty(key, qty){
+  const store = getQtyStore();
+  if (qty && qty > 0) store[key] = qty; else delete store[key];
+  setQtyStore(store);
+}
+function applyPersistedOrderQtys(){
+  const store = getQtyStore();
+  for (const [k, r] of state.byItem.entries()){
+    if (store[k] !== undefined) r.orderQty = Number(store[k]) || 0;
+  }
+}
+
+// --- theme ---
+function applySavedTheme(){
+  try {
+    const t = localStorage.getItem('pantera_theme') || 'light';
+    document.body.classList.toggle('dark', t === 'dark');
+  } catch {}
+}
+function toggleTheme(){
+  const isDark = document.body.classList.toggle('dark');
+  try { localStorage.setItem('pantera_theme', isDark ? 'dark' : 'light'); } catch {}
 }
 
 // --- lightweight passcode gate ---
