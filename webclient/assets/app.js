@@ -355,7 +355,8 @@ async function loadAll() {
   aggregate();
   applyPersistedOrderQtys();
   render();
-  setStatus(`Loaded ${state.byItem.size} items | Sales ${sales.length} | POs ${pos.length} | Items ${items.length}`);
+  // Clearer status: aggregated vs items master
+  setStatus(`Aggregated items: ${state.byItem.size.toLocaleString()} • Items master: ${items.length.toLocaleString()}`);
 }
 
 async function resolveSalesFilename() {
