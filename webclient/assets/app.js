@@ -205,7 +205,9 @@ function render() {
     { key: 'outstandingQty', label: 'Outstanding PO Qty' },
     { key: 'orderQty', label: 'Order Qty' },
   ];
-  const monthCols = state.months.map(m => ({ key: `m:${m}`, label: m }));
+  // Show most recent month on the left by reversing display order
+  const monthsDisplay = [...state.months].reverse();
+  const monthCols = monthsDisplay.map(m => ({ key: `m:${m}`, label: m }));
   const cols = [...staticCols, ...monthCols];
 
   // Render header
@@ -232,7 +234,8 @@ function render() {
       if (typeof v === 'number') v = v.toLocaleString();
       cells.push(`<td>${v ?? ''}</td>`);
     }
-    for (const m of state.months) {
+    // Render sales columns with most recent on the left
+    for (const m of monthsDisplay) {
       const v = r.salesByMonth[m] || 0;
       cells.push(`<td class="num">${v ? v.toLocaleString() : ''}</td>`);
     }
@@ -274,10 +277,11 @@ function render() {
 
 function exportCsvAll() {
   const rows = Array.from(state.byItem.values());
-  const header = ['Item ID','SKU','Item Name','Supplier Code','Available Stock','Inventory Cost','Last Purchase Price','Outstanding PO Qty',...state.months];
+  const monthsDisplay = [...state.months].reverse();
+  const header = ['Item ID','SKU','Item Name','Supplier Code','Available Stock','Inventory Cost','Last Purchase Price','Outstanding PO Qty',...monthsDisplay];
   const data = rows.map(r => [
     r.itemId, r.sku, r.name, r.supplier, r.available, r.cost, r.lastPurchasePrice, r.outstandingQty,
-    ...state.months.map(m => r.salesByMonth[m] || 0)
+    ...monthsDisplay.map(m => r.salesByMonth[m] || 0)
   ]);
   const csv = [header.join(','), ...data.map(row => row.map(safeCsv).join(','))].join('\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -292,11 +296,12 @@ function exportCsvAll() {
 function exportCsvFiltered() {
   // Export only filtered keys and include Order Qty
   const keys = state.filteredKeys.length ? state.filteredKeys : Array.from(state.byItem.keys());
-  const header = ['Item ID','SKU','Item Name','Supplier Code','Available Stock','Inventory Cost','Last Purchase Price','Outstanding PO Qty','Order Qty',...state.months];
+  const monthsDisplay = [...state.months].reverse();
+  const header = ['Item ID','SKU','Item Name','Supplier Code','Available Stock','Inventory Cost','Last Purchase Price','Outstanding PO Qty','Order Qty',...monthsDisplay];
   const rows = keys.map(k => state.byItem.get(k)).filter(Boolean);
   const data = rows.map(r => [
     r.itemId, r.sku, r.name, r.supplier, r.available, r.cost, r.lastPurchasePrice, r.outstandingQty, r.orderQty || 0,
-    ...state.months.map(m => r.salesByMonth[m] || 0)
+    ...monthsDisplay.map(m => r.salesByMonth[m] || 0)
   ]);
   const csv = [header.join(','), ...data.map(row => row.map(safeCsv).join(','))].join('\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });

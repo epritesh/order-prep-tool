@@ -12,23 +12,31 @@
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 </head>
 <body>
-  <header>
-    <h1>Pantera Order Preparation</h1>
-    <p>Spreadsheet view: last 24 months sales, outstanding POs, stock, last purchase price, and inventory cost.</p>
+  <header class="topbar">
+    <div class="brand">
+      <img src="/pantera-logo.png" alt="Pantera" class="logo" onerror="this.style.display='none'" />
+      <div class="titles">
+        <h1>Order Preparation</h1>
+        <p>Sales • POs • Stock • Prices • Cost</p>
+      </div>
+    </div>
+    <div class="top-actions">
+      <button id="reloadBtn" class="btn">Reload Data</button>
+    </div>
   </header>
 
   <!-- lightweight passcode gate (optional) -->
   <div id="lock" class="lock" style="display:none">
     <div class="lock-card">
+      <img src="/pantera-logo.png" alt="Pantera" class="lock-logo" onerror="this.style.display='none'" />
       <h2>Enter passcode</h2>
       <input id="passInput" type="password" placeholder="Passcode" />
-      <button id="unlockBtn">Unlock</button>
+      <button id="unlockBtn" class="btn primary" style="width:100%">Unlock</button>
       <div id="lockMsg" class="lock-msg"></div>
     </div>
   </div>
 
   <section class="controls">
-    <button id="reloadBtn">Reload Data</button>
     <span id="status" class="status">Idle</span>
   </section>
 
@@ -38,17 +46,17 @@
       <textarea id="skuList" placeholder="800-4534\n118-119\n..."></textarea>
     </div>
     <div class="sku-right">
-      <button id="applySkusBtn">Apply SKUs</button>
-      <button id="clearSkusBtn">Clear</button>
+  <button id="applySkusBtn" class="btn primary">Apply SKUs</button>
+  <button id="clearSkusBtn" class="btn ghost">Clear</button>
       <label class="inline"><input type="checkbox" id="showCurrentOnly"> Show current only</label>
       <div class="pager">
-        <button id="prevBtn">Prev</button>
+  <button id="prevBtn" class="btn">Prev</button>
         <span id="pagerLabel">0 of 0</span>
-        <button id="nextBtn">Next</button>
+  <button id="nextBtn" class="btn">Next</button>
       </div>
       <div class="exports">
-        <button id="exportFilteredBtn">Export Filtered CSV</button>
-        <button id="exportAllBtn">Export All CSV</button>
+  <button id="exportFilteredBtn" class="btn">Export Filtered CSV</button>
+  <button id="exportAllBtn" class="btn ghost">Export All CSV</button>
       </div>
     </div>
   </section>
