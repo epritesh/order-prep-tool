@@ -14,6 +14,7 @@ Static webclient for analyzing sales, purchase orders, and inventory to prepare 
   - Current available stock (from Items.csv)
   - Last purchase price (latest PO line)
   - System inventory cost (from Items.csv)
+  - KPI cards (last purchase price/date/vendor, inventory cost, stock & outstanding) and a compact 24‑month sparkline
 - Renders a spreadsheet-like table and allows CSV export.
 
 ## Project layout
@@ -56,3 +57,4 @@ python -m http.server 8080
 
 - Large CSVs (18k–21k rows) are supported in-browser via PapaParse; initial load can take a few seconds.
 - You can add more columns to Items.csv; the app uses heuristics to find `Available_Stock` and `Cost`.
+- Click a row (or use the pager with "Show current only") to update the KPI cards and sparkline for the current item.

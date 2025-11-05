@@ -14,6 +14,7 @@ const state = {
   filteredKeys: [],
   currentIndex: 0,
   showCurrentOnly: false,
+  selectedKey: null,
 };
 
 const el = {
@@ -89,6 +90,7 @@ const H = {
   poItemPrice: (r) => num(r['Item Price'] || r['Rate'] || r['Unit Price']),
   poQtyOrdered: (r) => num(r['QuantityOrdered'] || r['Qty Ordered'] || r['Quantity Ordered']),
   poQtyReceived: (r) => num(r['QuantityReceived'] || r['Qty Received'] || r['Quantity Received']),
+  poVendor: (r) => r['Vendor Name'] || r['Vendor'] || r['Supplier'],
   // Items master
   available: (r) => num(r['Available_Stock'] || r['Available Stock'] || r['AvailableQuantity'] || r['Available Qty'] || r['Stock Available'] || r['Available']),
   cost: (r) => num(r['Cost'] || r['Rate'] || r['Average Cost'] || r['Inventory Cost']),
@@ -166,6 +168,7 @@ function aggregate() {
       if (!o._lastPoDate || d > o._lastPoDate) {
         o._lastPoDate = d;
         o.lastPurchasePrice = H.poItemPrice(r);
+        o.lastVendor = H.poVendor(r) || o.lastVendor;
       }
     }
   }
@@ -233,8 +236,9 @@ function render() {
       const v = r.salesByMonth[m] || 0;
       cells.push(`<td class="num">${v ? v.toLocaleString() : ''}</td>`);
     }
-    const isCurrent = state.showCurrentOnly && state.filteredKeys[state.currentIndex] === makeKey(r);
-    html.push(`<tr class="${isCurrent ? 'current-row' : ''}">${cells.join('')}</tr>`);
+    const k = makeKey(r);
+    const isCurrent = (state.showCurrentOnly && state.filteredKeys[state.currentIndex] === k) || (!state.showCurrentOnly && state.selectedKey === k);
+    html.push(`<tr data-key="${escapeHtml(k)}" class="${isCurrent ? 'current-row' : ''}">${cells.join('')}</tr>`);
   });
 
   if (state.showCurrentOnly && state.filteredKeys.length > 0) {
@@ -252,8 +256,20 @@ function render() {
     });
   });
 
+  // Row click selection (when not in current-only mode)
+  el.body.querySelectorAll('tr[data-key]').forEach(tr => {
+    tr.addEventListener('click', () => {
+      state.selectedKey = tr.getAttribute('data-key');
+      render();
+      renderSummary();
+    });
+  });
+
   // Update pager label
   el.pagerLabel.textContent = `${Math.min(state.currentIndex+1, Math.max(1, state.filteredKeys.length))} of ${state.filteredKeys.length}`;
+
+  // Update summary panel
+  renderSummary();
 }
 
 function exportCsvAll() {
@@ -343,8 +359,8 @@ function init() {
   if (el.applySkusBtn) el.applySkusBtn.addEventListener('click', applySkus);
   if (el.clearSkusBtn) el.clearSkusBtn.addEventListener('click', () => { state.skuFilterSet = null; state.currentIndex = 0; render(); updatePagerButtons(); });
   if (el.showCurrentOnly) el.showCurrentOnly.addEventListener('change', () => { state.showCurrentOnly = el.showCurrentOnly.checked; render(); });
-  if (el.prevBtn) el.prevBtn.addEventListener('click', () => { if (state.filteredKeys.length) { state.currentIndex = Math.max(0, state.currentIndex - 1); render(); updatePagerButtons(); }});
-  if (el.nextBtn) el.nextBtn.addEventListener('click', () => { if (state.filteredKeys.length) { state.currentIndex = Math.min(state.filteredKeys.length - 1, state.currentIndex + 1); render(); updatePagerButtons(); }});
+  if (el.prevBtn) el.prevBtn.addEventListener('click', () => { if (state.filteredKeys.length) { state.currentIndex = Math.max(0, state.currentIndex - 1); state.selectedKey = state.filteredKeys[state.currentIndex]; render(); updatePagerButtons(); }});
+  if (el.nextBtn) el.nextBtn.addEventListener('click', () => { if (state.filteredKeys.length) { state.currentIndex = Math.min(state.filteredKeys.length - 1, state.currentIndex + 1); state.selectedKey = state.filteredKeys[state.currentIndex]; render(); updatePagerButtons(); }});
 
   // auto-load
   loadAll();
@@ -370,4 +386,39 @@ function updatePagerButtons() {
 
 function escapeHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function renderSummary() {
+  const k = state.showCurrentOnly
+    ? state.filteredKeys[state.currentIndex]
+    : (state.selectedKey || state.filteredKeys[state.currentIndex] || Array.from(state.byItem.keys())[0]);
+  const r = state.byItem.get(k);
+  if (!r) return;
+  // KPIs
+  const fmt = (n) => (typeof n === 'number' ? n.toLocaleString() : (n ?? '—'));
+  const byId = (id) => document.getElementById(id);
+  const dateStr = r._lastPoDate ? new Date(r._lastPoDate).toISOString().slice(0,10) : '—';
+  const vendor = r.lastVendor || '—';
+  if (byId('kpiLastPrice')) byId('kpiLastPrice').textContent = fmt(r.lastPurchasePrice);
+  if (byId('kpiLastDate')) byId('kpiLastDate').textContent = dateStr;
+  if (byId('kpiVendor')) byId('kpiVendor').textContent = vendor;
+  if (byId('kpiCost')) byId('kpiCost').textContent = fmt(r.cost);
+  if (byId('kpiAvailable')) byId('kpiAvailable').textContent = fmt(r.available);
+  if (byId('kpiOutstanding')) byId('kpiOutstanding').textContent = fmt(r.outstandingQty);
+
+  // Sparkline SVG
+  const svg = document.getElementById('sparkline');
+  if (!svg) return;
+  const W = 400, H = 80, P = 4;
+  const vals = state.months.map(m => r.salesByMonth[m] || 0);
+  const max = Math.max(1, ...vals);
+  const points = vals.map((v, i) => {
+    const x = P + (W - 2*P) * (i / (vals.length - 1 || 1));
+    const y = H - P - (H - 2*P) * (v / (max || 1));
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  svg.innerHTML = `
+    <polyline fill="none" stroke="#3f51b5" stroke-width="2" points="${points}" />
+    <line x1="0" y1="${H-1}" x2="${W}" y2="${H-1}" stroke="#eee" />
+  `;
 }

@@ -15,6 +15,15 @@ h1 { font-size: 20px; margin: 0 0 4px; }
 .inline { display: inline-flex; gap: 6px; align-items: center; }
 .pager { display: inline-flex; align-items: center; gap: 8px; }
 .exports { display: flex; gap: 8px; }
+.summary { display: grid; grid-template-columns: 1fr 400px; gap: 12px; margin-bottom: 12px; align-items: stretch; }
+.summary .cards { display: grid; grid-template-columns: repeat(3, minmax(180px, 1fr)); gap: 12px; }
+.card { background: white; border: 1px solid #eaeaea; border-radius: 8px; padding: 10px 12px; }
+.card-title { font-size: 12px; color: #666; margin-bottom: 6px; }
+.card-kpi { font-size: 20px; font-weight: 600; }
+.card-sub { font-size: 12px; color: #555; }
+.chart { background: white; border: 1px solid #eaeaea; border-radius: 8px; padding: 8px; display: flex; flex-direction: column; }
+#sparkline { width: 100%; height: 80px; }
+.chart-legend { font-size: 11px; color: #666; text-align: center; margin-top: 4px; }
 .table-wrap { overflow: auto; border: 1px solid #ddd; background: white; border-radius: 6px; }
 #grid { width: 100%; border-collapse: collapse; font-size: 12px; }
 #grid thead { position: sticky; top: 0; background: #f5f5f5; z-index: 1; }

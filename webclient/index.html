@@ -43,6 +43,30 @@
     </div>
   </section>
 
+  <section class="summary">
+    <div class="cards">
+      <div class="card">
+        <div class="card-title">Last Purchase</div>
+        <div class="card-kpi"><span id="kpiLastPrice">—</span></div>
+        <div class="card-sub"><span id="kpiLastDate">—</span> · <span id="kpiVendor">—</span></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Inventory Cost</div>
+        <div class="card-kpi"><span id="kpiCost">—</span></div>
+        <div class="card-sub">System cost</div>
+      </div>
+      <div class="card">
+        <div class="card-title">Stock & Outstanding</div>
+        <div class="card-kpi"><span id="kpiAvailable">—</span></div>
+        <div class="card-sub">Outstanding POs: <span id="kpiOutstanding">—</span></div>
+      </div>
+    </div>
+    <div class="chart">
+      <svg id="sparkline" viewBox="0 0 400 80" preserveAspectRatio="none"></svg>
+      <div class="chart-legend">Last 24 months quantity</div>
+    </div>
+  </section>
+
   <section class="table-wrap">
     <table id="grid">
       <thead id="grid-head"></thead>
