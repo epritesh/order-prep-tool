@@ -1,0 +1,63 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Order Prep (Live)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body{font-family:system-ui,Segoe UI,Arial,sans-serif;margin:16px;}
+    .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    input[type=text]{padding:8px 10px;font-size:14px;min-width:220px}
+    button{padding:8px 12px;font-size:14px;cursor:pointer}
+    .kpis{display:flex;gap:12px;margin-top:12px;flex-wrap:wrap}
+    .kpi{border:1px solid #ddd;border-radius:8px;padding:12px 14px;min-width:160px}
+    .muted{color:#666;font-size:12px}
+    table{border-collapse:collapse;margin-top:12px}
+    th,td{border:1px solid #ddd;padding:6px 8px;text-align:right}
+    th:first-child,td:first-child{text-align:left}
+  </style>
+</head>
+<body>
+  <div class="row">
+    <label for="sku">Exact SKU</label>
+    <input id="sku" type="text" placeholder="e.g. 509-2003">
+    <button id="go">Search</button>
+    <span id="status" class="muted"></span>
+  </div>
+
+  <div id="result" style="display:none">
+    <h3 id="title"></h3>
+    <div class="kpis">
+      <div class="kpi">
+        <div>Available</div>
+        <div id="kpiAvailable" style="font-weight:600;font-size:18px"></div>
+      </div>
+      <div class="kpi">
+        <div>Unit cost (CRC)</div>
+        <div id="kpiCost" style="font-weight:600;font-size:18px"></div>
+      </div>
+      <div class="kpi">
+        <div>Inventory Value (CRC)</div>
+        <div id="kpiInventoryValue" style="font-weight:600;font-size:18px"></div>
+      </div>
+      <div class="kpi">
+        <div>Outstanding PO qty</div>
+        <div id="kpiOutstanding" style="font-weight:600;font-size:18px"></div>
+      </div>
+      <div class="kpi">
+        <div>Last Purchase (CRC)</div>
+        <div id="kpiLastPurchase" style="font-weight:600;font-size:18px"></div>
+        <div id="kpiLastVendor" class="muted"></div>
+      </div>
+    </div>
+
+    <h4>Sales (last 24 months, newest → oldest)</h4>
+    <table id="sales">
+      <thead><tr id="salesHead"></tr></thead>
+      <tbody><tr id="salesRow"></tr></tbody>
+    </table>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

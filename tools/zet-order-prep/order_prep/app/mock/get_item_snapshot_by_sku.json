@@ -1,0 +1,30 @@
+{
+  "item": {
+    "item_name": "Sample Item",
+    "sku": "SAMPLE-001",
+    "supplier_code": "SUP-123",
+    "available": 42,
+    "cost": 3.5
+  },
+  "inventory_value": 147.0,
+  "outstanding_po_qty": 18,
+  "last_purchase": {
+    "price": 3.4,
+    "vendor_name": "Best Vendor Co.",
+    "date": "2025-09-10"
+  },
+  "sales_by_month": {
+    "2025-10": 5,
+    "2025-09": 4,
+    "2025-08": 7,
+    "2025-07": 3,
+    "2025-06": 2,
+    "2025-05": 6,
+    "2025-04": 1,
+    "2025-03": 0,
+    "2025-02": 8,
+    "2025-01": 4,
+    "2024-12": 2,
+    "2024-11": 9
+  }
+}

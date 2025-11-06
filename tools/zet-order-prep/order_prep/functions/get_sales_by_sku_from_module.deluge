@@ -1,0 +1,124 @@
+// Books Custom Function: Get_Sales_By_SKU_From_Module
+// Purpose: Read last 24 months of sales from a Custom Module populated via CSV (Item Monthly Sales)
+// Inputs (define these as Function arguments in the UI):
+//   sku (string, optional)
+//   item_id (string, optional)
+//   org_id (string, required)
+//   module_api_name (string, optional) e.g., "cm_item_monthly_sales"
+// Requirements:
+//   - Create an OAuth connection named "booksconnection" with Zoho Books scope
+//   - Ensure API field names in the module: cf_key, cf_item_id, cf_sku, cf_item_name, cf_month_year, cf_total_quantity, cf_net_sales, cf_currency
+
+resp = Map();
+try
+{
+	// Resolve inputs
+	sku = ifnull(sku,"");
+	item_id = ifnull(item_id,"");
+	org_id = ifnull(org_id,"");
+	module_api_name = ifnull(module_api_name,"cm_item_monthly_sales");
+
+	if(org_id == "")
+	{
+		throw "org_id is required";
+	}
+
+	if(sku == "" && item_id == "")
+	{
+		throw "Provide either sku or item_id";
+	}
+
+	// Compute 24-month cutoff in YYYY-MM
+	cutoff_dt = zoho.currentdate.addMonth(-23);
+	cutoff_key = cutoff_dt.toString("yyyy-MM");
+
+	// Build criteria on SKU or Item ID
+	criteria = if(sku != "","(cf_sku==\"" + sku + "\")","(cf_item_id==\"" + item_id + "\")");
+
+	page = 1;
+	per_page = 200;
+	all = List();
+
+	// US DC domain; change if needed or parameterize
+	base = "https://books.zoho.com/api/v3/" + module_api_name;
+
+	for each i in 1..50
+	{
+		url = base + "?organization_id=" + org_id + "&page=" + page + "&per_page=" + per_page + "&sort_column=cf_month_year&sort_order=d&criteria=" + encodeUrl(criteria);
+		res = invokeurl
+		[
+			url : url
+			type : GET
+			connection : "booksconnection"
+		];
+		if(!res.containKey(module_api_name))
+		{
+			break;
+		}
+		rows = res.get(module_api_name);
+		if(rows == null || rows.isEmpty())
+		{
+			break;
+		}
+		for each r in rows
+		{
+			m = Map();
+			m.put("month_year", r.get("cf_month_year"));
+			m.put("total_quantity", r.get("cf_total_quantity"));
+			m.put("net_sales", r.get("cf_net_sales"));
+			m.put("currency", r.get("cf_currency"));
+			m.put("item_id", r.get("cf_item_id"));
+			m.put("sku", r.get("cf_sku"));
+			m.put("item_name", r.get("cf_item_name"));
+			// client-side cutoff on cf_month_year (text YYYY-MM)
+			if(m.get("month_year") >= cutoff_key)
+			{
+				all.add(m);
+			}
+		}
+		if(rows.size() < per_page)
+		{
+			break;
+		}
+		page = page + 1;
+	}
+
+	// Keep only last 24 months after sorting
+	all.sort((a,b) -> if(a.get("month_year") > b.get("month_year")) -1 else if(a.get("month_year") < b.get("month_year")) 1 else 0);
+	if(all.size() > 24)
+	{
+		all = all.subList(0,24);
+	}
+
+	// Totals
+	t_qty = 0.0;
+	t_sales = 0.0;
+	for each r in all
+	{
+		q = toDecimal(ifnull(r.get("total_quantity"),"0"));
+		s = toDecimal(ifnull(r.get("net_sales"),"0"));
+		t_qty = t_qty + q;
+		t_sales = t_sales + s;
+	}
+
+	meta = Map();
+	if(all.size() > 0)
+	{
+		meta.put("sku", all.get(0).get("sku"));
+		meta.put("item_id", all.get(0).get("item_id"));
+		meta.put("item_name", all.get(0).get("item_name"));
+	}
+
+	resp.put("status","ok");
+	resp.put("cutoff_from", cutoff_key);
+	resp.put("months", all); // newest first
+	resp.put("total_quantity", t_qty);
+	resp.put("total_net_sales", t_sales);
+	resp.put("meta", meta);
+}
+catch (e)
+{
+	resp = {"status":"error","message":e.toString()};
+}
+
+return resp.toString();

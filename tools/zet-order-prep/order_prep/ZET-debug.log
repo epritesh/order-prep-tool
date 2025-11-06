@@ -1,0 +1,9 @@
+[info] [2025-11-05T15:42:26.183Z] : i You're already logged in as pritesh@panterarepuestos.com
+[info] [2025-11-05T15:42:53.672Z] : √ Logged as : pritesh@panterarepuestos.com
+[debug] [2025-11-05T15:43:01.972Z] : Session Expired
+[debug] [2025-11-05T15:43:02.244Z] : >>>> HTTP REQUEST : POST https://accounts.zoho.com/oauth/v2/token/revoke 
+Query params: {"token":"1000.febd8d54c51a7a1393a109028ce8d889.a2954a49f81b84e3ab2ca07c008d4229"}
+
+[debug] [2025-11-05T15:43:03.784Z] : <<<< HTTP RESPONSE : 200
+Response Headers{"server":"ZGS","date":"Wed, 05 Nov 2025 15:43:04 GMT","content-length":"20","connection":"keep-alive","set-cookie":["zalb_b266a5bf57=9f371135a524e2d1f51eb9f41fa26c60; Path=/; Secure; HttpOnly","iamcsr=1dd0275b-5eac-4fa0-8bf9-548958d8cfa7;path=/;SameSite=Strict;Secure;priority=high"],"x-content-type-options":"nosniff","x-frame-options":"SAMEORIGIN","content-language":"en-US","strict-transport-security":"max-age=64072000; includeSubDomains; preload"}
+
