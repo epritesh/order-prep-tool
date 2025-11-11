@@ -498,6 +498,118 @@ WHERE NOT ((d.SKU IS NULL OR TRIM(d.SKU) = '') AND st."s.On_Hand_Qty" IS NOT NUL
 /* -------------------------------------------------------------
   7b_diag_1. DIAGNOSTIC: verify column names from qt_demand_base_24m_v2
   Run this alone. If it errors on Item_ID, the flatten table did NOT
+   (KPI MATRIX SECTION appended below)
+
+/* -------------------------------------------------------------
+   12. Policy KPI Matrix (qt_dashboard_kpis_v2_policy_matrix)
+   Purpose: Pre-compute KPIs for selectable buffer policies (months).
+   Notes:
+     - Reorder_Candidates currently equals Total_SKUs in sample output;
+       this implies Coverage <= policy OR Shortfall > 0 logic fires for all.
+       Verify Coverage_Months distribution; if most items have Coverage < 3
+       then policy values 1,1.5,2,3 will all mark all items as candidates.
+       Adjust candidate condition if you need stricter logic:
+         e.g. require Avg_Demand_Used > 0 AND (Coverage_Months < policy
+              OR Stock_Shortfall > 0) AND On_Hand_Qty > 0.
+     - Last_Purchase_Date_Any was NULL in sample; ensure enrichment selects
+       lp."m.Last_Purchase_Date" and that column is non-null for recent buys.
+     - Inventory_Value_CRC large numbers are CRC currency; convert if USD needed.
+   ------------------------------------------------------------- */
+SELECT
+  p.policy_months,
+  /* Distinct SKU / Item key */
+  COUNT(*) AS Total_SKUs,
+  /* Candidate logic: demand present and (coverage <= policy OR shortfall > 0) */
+  SUM(CASE WHEN e.Avg_Demand_Used IS NOT NULL AND e.Avg_Demand_Used > 0
+            AND (
+                  (e.Coverage_Months IS NULL) /* treat unknown coverage as review */
+               OR (e.Coverage_Months <= p.policy_months)
+               OR (e.Stock_Shortfall IS NOT NULL AND e.Stock_Shortfall > 0)
+                )
+          THEN 1 ELSE 0 END) AS Reorder_Candidates,
+  /* Strict: coverage <= 0 AND demand > 0 */
+  SUM(CASE WHEN e.Avg_Demand_Used IS NOT NULL AND e.Avg_Demand_Used > 0
+             AND e.Coverage_Months IS NOT NULL AND e.Coverage_Months <= 0
+            THEN 1 ELSE 0 END) AS Reorder_Now_Strict,
+  /* Presence checks */
+  SUM(CASE WHEN e.On_Hand_Qty IS NOT NULL THEN 1 ELSE 0 END) AS Items_With_SOH,
+  SUM(CASE WHEN e.Last_Purchase_Price IS NOT NULL OR e.Last_Purchase_Price_Fallback IS NOT NULL THEN 1 ELSE 0 END) AS Items_With_Last_Purchase,
+  SUM(CASE WHEN e.Current_Unit_Rate IS NOT NULL THEN 1 ELSE 0 END) AS Items_With_Unit_Rate,
+  /* Inventory value CRC */
+  SUM(CASE WHEN e.On_Hand_Qty IS NOT NULL AND e.Current_Unit_Rate IS NOT NULL
+           THEN e.On_Hand_Qty * e.Current_Unit_Rate ELSE 0 END) AS Inventory_Value_CRC,
+  /* Total shortfall units under chosen policy */
+  SUM(CASE WHEN e.Avg_Demand_Used IS NOT NULL AND e.On_Hand_Qty IS NOT NULL AND e.Avg_Demand_Used > 0
+            THEN CASE WHEN (p.policy_months * e.Avg_Demand_Used) - e.On_Hand_Qty > 0
+                      THEN (p.policy_months * e.Avg_Demand_Used) - e.On_Hand_Qty ELSE 0 END
+            ELSE 0 END) AS Total_Shortfall_Units,
+  /* Average coverage among items with demand */
+  AVG(CASE WHEN e.Coverage_Months IS NOT NULL AND e.Avg_Demand_Used IS NOT NULL AND e.Avg_Demand_Used > 0
+           THEN e.Coverage_Months END) AS Avg_Coverage_Months,
+  /* Percent below policy among items with known coverage */
+  CASE WHEN SUM(CASE WHEN e.Coverage_Months IS NOT NULL AND e.Avg_Demand_Used IS NOT NULL AND e.Avg_Demand_Used > 0 THEN 1 END) > 0
+       THEN 100.0 * SUM(CASE WHEN e.Coverage_Months IS NOT NULL AND e.Avg_Demand_Used IS NOT NULL AND e.Avg_Demand_Used > 0 AND e.Coverage_Months <= p.policy_months THEN 1 END)
+            / SUM(CASE WHEN e.Coverage_Months IS NOT NULL AND e.Avg_Demand_Used IS NOT NULL AND e.Avg_Demand_Used > 0 THEN 1 END)
+       ELSE NULL END AS Pct_Below_Policy,
+  AVG(CASE WHEN e.Cost_Delta_Pct IS NOT NULL THEN e.Cost_Delta_Pct END) AS Avg_Cost_Delta_Pct,
+  /* Any purchase date presence */
+  MAX(e.Last_Purchase_Date) AS Last_Purchase_Date_Any,
+  /* Any purchase price (prefers current) */
+  AVG(CASE WHEN e.Last_Purchase_Price IS NOT NULL THEN e.Last_Purchase_Price ELSE e.Last_Purchase_Price_Fallback END) AS Last_Purchase_Price_Any,
+  /* Demand aggregates */
+  SUM(CASE WHEN e.Avg_Demand_Used IS NOT NULL THEN e.Avg_Demand_Used END) AS Avg_Monthly_Demand,
+  SUM(CASE WHEN e.Sales_24M_Qty IS NOT NULL THEN e.Sales_24M_Qty END) AS Total_Sales_24M_Qty,
+  SUM(CASE WHEN e.Sales_24M_Net IS NOT NULL THEN e.Sales_24M_Net END) AS Total_Sales_24M_Net,
+  /* Share columns for dashboard cards */
+  CASE WHEN COUNT(*) > 0 THEN 100.0 * SUM(CASE WHEN e.Avg_Demand_Used IS NOT NULL AND e.Avg_Demand_Used > 0 AND (
+                  (e.Coverage_Months IS NULL)
+               OR (e.Coverage_Months <= p.policy_months)
+               OR (e.Stock_Shortfall IS NOT NULL AND e.Stock_Shortfall > 0)) THEN 1 END) / COUNT(*) ELSE NULL END AS Reorder_Candidates_Share_Pct,
+  CASE WHEN COUNT(*) > 0 THEN 100.0 * SUM(CASE WHEN e.Avg_Demand_Used IS NOT NULL AND e.Avg_Demand_Used > 0 AND e.Coverage_Months IS NOT NULL AND e.Coverage_Months <= 0 THEN 1 END) / COUNT(*) ELSE NULL END AS Reorder_Now_Strict_Share_Pct
+FROM item_snapshot_enriched_flat_tbl_v2 e
+/* Policy dimension inline */
+CROSS JOIN (
+  SELECT 1.0 AS policy_months UNION ALL
+  SELECT 1.5 UNION ALL
+  SELECT 2.0 UNION ALL
+  SELECT 3.0
+) p
+GROUP BY p.policy_months
+ORDER BY p.policy_months;
+
+/* -------------------------------------------------------------
+   12a. Simplified Policy Matrix (qt_dashboard_kpis_v2_policy_matrix_simple)
+   Use if performance issues arise; omits share columns & cost delta avg.
+   ------------------------------------------------------------- */
+SELECT
+  p.policy_months,
+  COUNT(*) AS Total_SKUs,
+  SUM(CASE WHEN e.Avg_Demand_Used IS NOT NULL AND e.Avg_Demand_Used > 0 AND (
+               (e.Coverage_Months IS NULL)
+            OR (e.Coverage_Months <= p.policy_months)
+            OR (e.Stock_Shortfall IS NOT NULL AND e.Stock_Shortfall > 0)) THEN 1 END) AS Reorder_Candidates,
+  SUM(CASE WHEN e.Avg_Demand_Used IS NOT NULL AND e.Avg_Demand_Used > 0 AND e.Coverage_Months IS NOT NULL AND e.Coverage_Months <= 0 THEN 1 END) AS Reorder_Now_Strict,
+  SUM(CASE WHEN e.On_Hand_Qty IS NOT NULL THEN 1 END) AS Items_With_SOH,
+  SUM(CASE WHEN e.Last_Purchase_Price IS NOT NULL OR e.Last_Purchase_Price_Fallback IS NOT NULL THEN 1 END) AS Items_With_Last_Purchase,
+  SUM(CASE WHEN e.Current_Unit_Rate IS NOT NULL THEN 1 END) AS Items_With_Unit_Rate,
+  SUM(CASE WHEN e.On_Hand_Qty IS NOT NULL AND e.Current_Unit_Rate IS NOT NULL THEN e.On_Hand_Qty * e.Current_Unit_Rate END) AS Inventory_Value_CRC,
+  SUM(CASE WHEN e.Avg_Demand_Used IS NOT NULL AND e.On_Hand_Qty IS NOT NULL AND e.Avg_Demand_Used > 0
+            THEN CASE WHEN (p.policy_months * e.Avg_Demand_Used) - e.On_Hand_Qty > 0
+                      THEN (p.policy_months * e.Avg_Demand_Used) - e.On_Hand_Qty END END) AS Total_Shortfall_Units,
+  AVG(CASE WHEN e.Coverage_Months IS NOT NULL AND e.Avg_Demand_Used IS NOT NULL AND e.Avg_Demand_Used > 0 THEN e.Coverage_Months END) AS Avg_Coverage_Months,
+  CASE WHEN SUM(CASE WHEN e.Coverage_Months IS NOT NULL AND e.Avg_Demand_Used IS NOT NULL AND e.Avg_Demand_Used > 0 THEN 1 END) > 0
+       THEN 100.0 * SUM(CASE WHEN e.Coverage_Months IS NOT NULL AND e.Avg_Demand_Used IS NOT NULL AND e.Avg_Demand_Used > 0 AND e.Coverage_Months <= p.policy_months THEN 1 END)
+            / SUM(CASE WHEN e.Coverage_Months IS NOT NULL AND e.Avg_Demand_Used IS NOT NULL AND e.Avg_Demand_Used > 0 THEN 1 END)
+       END AS Pct_Below_Policy
+FROM item_snapshot_enriched_flat_tbl_v2 e
+CROSS JOIN (
+  SELECT 1.0 AS policy_months UNION ALL
+  SELECT 1.5 UNION ALL
+  SELECT 2.0 UNION ALL
+  SELECT 3.0
+) p
+GROUP BY p.policy_months
+ORDER BY p.policy_months;
   create Item_ID as an accessible identifier. Capture the exact error text.
   ------------------------------------------------------------- */
 SELECT d.Item_ID, d.SKU, d.Sales_24M_Qty, d.Sales_24M_Net, d.Avg_Demand_Used
@@ -616,28 +728,31 @@ SELECT
              '' || COALESCE(t.Item_ID, t."d.Item_ID", t.Product_ID)
            )
     END) AS Total_SKUs,
-  COUNT(CASE
-      WHEN (COALESCE(t.Avg_Demand_Used, t."d.Avg_Demand_Used") IS NOT NULL AND CAST(COALESCE(t.Avg_Demand_Used, t."d.Avg_Demand_Used") AS DOUBLE) > 0)
-       AND (COALESCE(t.SKU, t."d.SKU") IS NULL OR (COALESCE(t.SKU, t."d.SKU") NOT LIKE '800-%' AND COALESCE(t.SKU, t."d.SKU") NOT LIKE '2000-%'))
-       AND NOT (COALESCE(t.SKU, t."d.SKU") IS NULL AND t.On_Hand_Qty IS NOT NULL AND t.On_Hand_Qty > 0)
-       AND ( (t.Coverage_Months IS NOT NULL AND t.Coverage_Months <= 1)
-             OR (t.On_Hand_Qty IS NOT NULL AND t.Stock_Shortfall IS NOT NULL AND t.Stock_Shortfall > 0) )
-      THEN 1 END) AS Reorder_Candidates,
-  COUNT(CASE
-      WHEN (COALESCE(t.Avg_Demand_Used, t."d.Avg_Demand_Used") IS NOT NULL AND CAST(COALESCE(t.Avg_Demand_Used, t."d.Avg_Demand_Used") AS DOUBLE) > 0)
-       AND (t.On_Hand_Qty IS NOT NULL)
-       AND (t.Coverage_Months IS NOT NULL AND t.Coverage_Months <= 0)
-       AND (COALESCE(t.SKU, t."d.SKU") IS NULL OR (COALESCE(t.SKU, t."d.SKU") NOT LIKE '800-%' AND COALESCE(t.SKU, t."d.SKU") NOT LIKE '2000-%'))
-       AND NOT (COALESCE(t.SKU, t."d.SKU") IS NULL AND t.On_Hand_Qty IS NOT NULL AND t.On_Hand_Qty > 0)
-      THEN 1 END) AS Reorder_Now_Strict,
-  COUNT(CASE WHEN t.On_Hand_Qty IS NOT NULL AND NOT (COALESCE(t.SKU, t."d.SKU") IS NULL AND t.On_Hand_Qty > 0) THEN 1 END) AS Items_With_SOH,
-  COUNT(CASE WHEN COALESCE(t.Last_Purchase_Price, t."lp.Last_Purchase_Price") IS NOT NULL OR t.Last_Purchase_Price_Fallback IS NOT NULL THEN 1 END) AS Items_With_Last_Purchase,
-  COUNT(CASE WHEN COALESCE(t.Current_Unit_Rate, t."st.Current_Unit_Rate") IS NOT NULL AND COALESCE(t.Current_Unit_Rate, t."st.Current_Unit_Rate") > 0 THEN 1 END) AS Items_With_Unit_Rate,
+  COUNT(DISTINCT CASE
+    WHEN (COALESCE(t.Avg_Demand_Used, t."d.Avg_Demand_Used") IS NOT NULL AND CAST(COALESCE(t.Avg_Demand_Used, t."d.Avg_Demand_Used") AS DOUBLE) > 0)
+     AND (COALESCE(t.SKU, t."d.SKU") IS NULL OR (COALESCE(t.SKU, t."d.SKU") NOT LIKE '800-%' AND COALESCE(t.SKU, t."d.SKU") NOT LIKE '2000-%'))
+     AND NOT (COALESCE(t.SKU, t."d.SKU") IS NULL AND t.On_Hand_Qty IS NOT NULL AND t.On_Hand_Qty > 0)
+     AND ( (t.Coverage_Months IS NOT NULL AND t.Coverage_Months <= 1)
+       OR (t.On_Hand_Qty IS NOT NULL AND t.Stock_Shortfall IS NOT NULL AND t.Stock_Shortfall > 0) )
+    THEN COALESCE(NULLIF(TRIM(COALESCE(t.SKU, t."d.SKU")), ''), '' || COALESCE(t.Item_ID, t."d.Item_ID", t.Product_ID)) END) AS Reorder_Candidates,
+  COUNT(DISTINCT CASE
+    WHEN (COALESCE(t.Avg_Demand_Used, t."d.Avg_Demand_Used") IS NOT NULL AND CAST(COALESCE(t.Avg_Demand_Used, t."d.Avg_Demand_Used") AS DOUBLE) > 0)
+     AND (t.On_Hand_Qty IS NOT NULL)
+     AND (t.Coverage_Months IS NOT NULL AND t.Coverage_Months <= 0)
+     AND (COALESCE(t.SKU, t."d.SKU") IS NULL OR (COALESCE(t.SKU, t."d.SKU") NOT LIKE '800-%' AND COALESCE(t.SKU, t."d.SKU") NOT LIKE '2000-%'))
+     AND NOT (COALESCE(t.SKU, t."d.SKU") IS NULL AND t.On_Hand_Qty IS NOT NULL AND t.On_Hand_Qty > 0)
+    THEN COALESCE(NULLIF(TRIM(COALESCE(t.SKU, t."d.SKU")), ''), '' || COALESCE(t.Item_ID, t."d.Item_ID", t.Product_ID)) END) AS Reorder_Now_Strict,
+  COUNT(DISTINCT CASE WHEN t.On_Hand_Qty IS NOT NULL AND NOT (COALESCE(t.SKU, t."d.SKU") IS NULL AND t.On_Hand_Qty > 0)
+    THEN COALESCE(NULLIF(TRIM(COALESCE(t.SKU, t."d.SKU")), ''), '' || COALESCE(t.Item_ID, t."d.Item_ID", t.Product_ID)) END) AS Items_With_SOH,
+  COUNT(DISTINCT CASE WHEN COALESCE(t.Last_Purchase_Price, t."lp.Last_Purchase_Price") IS NOT NULL OR t.Last_Purchase_Price_Fallback IS NOT NULL
+    THEN COALESCE(NULLIF(TRIM(COALESCE(t.SKU, t."d.SKU")), ''), '' || COALESCE(t.Item_ID, t."d.Item_ID", t.Product_ID)) END) AS Items_With_Last_Purchase,
+  COUNT(DISTINCT CASE WHEN COALESCE(t.Current_Unit_Rate, t."st.Current_Unit_Rate") IS NOT NULL AND COALESCE(t.Current_Unit_Rate, t."st.Current_Unit_Rate") > 0
+    THEN COALESCE(NULLIF(TRIM(COALESCE(t.SKU, t."d.SKU")), ''), '' || COALESCE(t.Item_ID, t."d.Item_ID", t.Product_ID)) END) AS Items_With_Unit_Rate,
   CAST(SUM(CASE WHEN t.On_Hand_Qty IS NOT NULL AND COALESCE(t.Current_Unit_Rate, t."st.Current_Unit_Rate") IS NOT NULL AND t.On_Hand_Qty > 0 AND COALESCE(t.Current_Unit_Rate, t."st.Current_Unit_Rate") > 0
            THEN t.On_Hand_Qty * COALESCE(t.Current_Unit_Rate, t."st.Current_Unit_Rate") ELSE 0 END) AS DOUBLE) AS Inventory_Value_CRC,
   CAST(SUM(CASE WHEN t.On_Hand_Qty IS NOT NULL AND t.Stock_Shortfall IS NOT NULL AND t.Stock_Shortfall > 0
            THEN t.Stock_Shortfall ELSE 0 END) AS DOUBLE) AS Total_Shortfall_Units,
-  CAST(AVG(CASE WHEN t.Coverage_Months IS NOT NULL THEN t.Coverage_Months END) AS DOUBLE) AS Avg_Coverage_Months,
+  CAST(AVG(CASE WHEN t.Coverage_Months IS NOT NULL AND t.Coverage_Months BETWEEN 0 AND 36 THEN t.Coverage_Months END) AS DOUBLE) AS Avg_Coverage_Months,
   CAST(CASE WHEN SUM(CASE WHEN t.Coverage_Months IS NOT NULL THEN 1 ELSE 0 END) = 0 THEN NULL ELSE
       100.0 * SUM(CASE WHEN t.Coverage_Months IS NOT NULL AND t.Coverage_Months <= 1 THEN 1 ELSE 0 END)
         / SUM(CASE WHEN t.Coverage_Months IS NOT NULL THEN 1 ELSE 0 END) END AS DOUBLE) AS Pct_Below_1_Month,
@@ -663,31 +778,34 @@ SELECT
         AND NOT (t."d.SKU" IS NULL AND t.On_Hand_Qty IS NOT NULL AND t.On_Hand_Qty > 0)
       THEN COALESCE(
              NULLIF(TRIM(t."d.SKU"), ''),
-             '' || COALESCE(t."d.Item_ID", t.Product_ID)
+             '' || t."d.Item_ID"  -- Removed Product_ID fallback; not present in v2 flat
            )
     END) AS Total_SKUs,
-  COUNT(CASE
-      WHEN (t."d.Avg_Demand_Used" IS NOT NULL AND CAST(t."d.Avg_Demand_Used" AS DOUBLE) > 0)
-       AND (t."d.SKU" IS NULL OR (t."d.SKU" NOT LIKE '800-%' AND t."d.SKU" NOT LIKE '2000-%'))
-       AND NOT (t."d.SKU" IS NULL AND t.On_Hand_Qty IS NOT NULL AND t.On_Hand_Qty > 0)
-       AND ( (t.Coverage_Months IS NOT NULL AND t.Coverage_Months <= 1)
-             OR (t.On_Hand_Qty IS NOT NULL AND t.Stock_Shortfall IS NOT NULL AND t.Stock_Shortfall > 0) )
-      THEN 1 END) AS Reorder_Candidates,
-  COUNT(CASE
-      WHEN (t."d.Avg_Demand_Used" IS NOT NULL AND CAST(t."d.Avg_Demand_Used" AS DOUBLE) > 0)
-       AND (t.On_Hand_Qty IS NOT NULL)
-       AND (t.Coverage_Months IS NOT NULL AND t.Coverage_Months <= 0)
-       AND (t."d.SKU" IS NULL OR (t."d.SKU" NOT LIKE '800-%' AND t."d.SKU" NOT LIKE '2000-%'))
-       AND NOT (t."d.SKU" IS NULL AND t.On_Hand_Qty IS NOT NULL AND t.On_Hand_Qty > 0)
-      THEN 1 END) AS Reorder_Now_Strict,
-  COUNT(CASE WHEN t.On_Hand_Qty IS NOT NULL AND NOT (t."d.SKU" IS NULL AND t.On_Hand_Qty > 0) THEN 1 END) AS Items_With_SOH,
-  COUNT(CASE WHEN COALESCE(t."lp.Last_Purchase_Price", t.Last_Purchase_Price_Fallback) IS NOT NULL THEN 1 END) AS Items_With_Last_Purchase,
-  COUNT(CASE WHEN COALESCE(t."st.Current_Unit_Rate", NULL) IS NOT NULL AND COALESCE(t."st.Current_Unit_Rate", NULL) > 0 THEN 1 END) AS Items_With_Unit_Rate,
+  COUNT(DISTINCT CASE
+    WHEN (t."d.Avg_Demand_Used" IS NOT NULL AND CAST(t."d.Avg_Demand_Used" AS DOUBLE) > 0)
+     AND (t."d.SKU" IS NULL OR (t."d.SKU" NOT LIKE '800-%' AND t."d.SKU" NOT LIKE '2000-%'))
+     AND NOT (t."d.SKU" IS NULL AND t.On_Hand_Qty IS NOT NULL AND t.On_Hand_Qty > 0)
+     AND ( (t.Coverage_Months IS NOT NULL AND t.Coverage_Months <= 1)
+       OR (t.On_Hand_Qty IS NOT NULL AND t.Stock_Shortfall IS NOT NULL AND t.Stock_Shortfall > 0) )
+    THEN COALESCE(NULLIF(TRIM(t."d.SKU"), ''), '' || t."d.Item_ID") END) AS Reorder_Candidates,
+  COUNT(DISTINCT CASE
+    WHEN (t."d.Avg_Demand_Used" IS NOT NULL AND CAST(t."d.Avg_Demand_Used" AS DOUBLE) > 0)
+     AND (t.On_Hand_Qty IS NOT NULL)
+     AND (t.Coverage_Months IS NOT NULL AND t.Coverage_Months <= 0)
+     AND (t."d.SKU" IS NULL OR (t."d.SKU" NOT LIKE '800-%' AND t."d.SKU" NOT LIKE '2000-%'))
+     AND NOT (t."d.SKU" IS NULL AND t.On_Hand_Qty IS NOT NULL AND t.On_Hand_Qty > 0)
+    THEN COALESCE(NULLIF(TRIM(t."d.SKU"), ''), '' || t."d.Item_ID") END) AS Reorder_Now_Strict,
+  COUNT(DISTINCT CASE WHEN t.On_Hand_Qty IS NOT NULL AND NOT (t."d.SKU" IS NULL AND t.On_Hand_Qty > 0)
+    THEN COALESCE(NULLIF(TRIM(t."d.SKU"), ''), '' || t."d.Item_ID") END) AS Items_With_SOH,
+  COUNT(DISTINCT CASE WHEN COALESCE(t."lp.Last_Purchase_Price", t.Last_Purchase_Price_Fallback) IS NOT NULL
+    THEN COALESCE(NULLIF(TRIM(t."d.SKU"), ''), '' || t."d.Item_ID") END) AS Items_With_Last_Purchase,
+  COUNT(DISTINCT CASE WHEN COALESCE(t."st.Current_Unit_Rate", NULL) IS NOT NULL AND COALESCE(t."st.Current_Unit_Rate", NULL) > 0
+    THEN COALESCE(NULLIF(TRIM(t."d.SKU"), ''), '' || t."d.Item_ID") END) AS Items_With_Unit_Rate,
   CAST(SUM(CASE WHEN t.On_Hand_Qty IS NOT NULL AND COALESCE(t."st.Current_Unit_Rate", NULL) IS NOT NULL AND t.On_Hand_Qty > 0 AND COALESCE(t."st.Current_Unit_Rate", NULL) > 0
            THEN t.On_Hand_Qty * COALESCE(t."st.Current_Unit_Rate", NULL) ELSE 0 END) AS DOUBLE) AS Inventory_Value_CRC,
   CAST(SUM(CASE WHEN t.On_Hand_Qty IS NOT NULL AND t.Stock_Shortfall IS NOT NULL AND t.Stock_Shortfall > 0
            THEN t.Stock_Shortfall ELSE 0 END) AS DOUBLE) AS Total_Shortfall_Units,
-  CAST(AVG(CASE WHEN t.Coverage_Months IS NOT NULL THEN t.Coverage_Months END) AS DOUBLE) AS Avg_Coverage_Months,
+  CAST(AVG(CASE WHEN t.Coverage_Months IS NOT NULL AND t.Coverage_Months BETWEEN 0 AND 36 THEN t.Coverage_Months END) AS DOUBLE) AS Avg_Coverage_Months,
   CAST(CASE WHEN SUM(CASE WHEN t.Coverage_Months IS NOT NULL THEN 1 ELSE 0 END) = 0 THEN NULL ELSE
       100.0 * SUM(CASE WHEN t.Coverage_Months IS NOT NULL AND t.Coverage_Months <= 1 THEN 1 ELSE 0 END)
         / SUM(CASE WHEN t.Coverage_Months IS NOT NULL THEN 1 ELSE 0 END) END AS DOUBLE) AS Pct_Below_1_Month,
@@ -700,5 +818,84 @@ SELECT
 FROM item_snapshot_enriched_flat_tbl_v2 t
 WHERE (t."d.SKU" IS NULL OR (t."d.SKU" NOT LIKE '800-%' AND t."d.SKU" NOT LIKE '2000-%'))
   AND NOT ((t."d.SKU" IS NULL OR TRIM(t."d.SKU") = '') AND t.On_Hand_Qty IS NOT NULL AND t.On_Hand_Qty > 0);
+
+/* -------------------------------------------------------------
+   8d. KPI Query v2 (qt_dashboard_kpis_v2_policy_matrix)
+   Dynamic policy months without changing the enrichment. This query
+   computes KPIs for a small set of policy buffers and returns one row
+   per policy_months value so dashboards can switch or show a selector.
+   Adjust the VALUES list to the policies you care about.
+   ------------------------------------------------------------- */
+WITH policies(policy_months) AS (
+  SELECT 1.0 UNION ALL
+  SELECT 1.5 UNION ALL
+  SELECT 2.0 UNION ALL
+  SELECT 3.0
+), base AS (
+  SELECT
+    t."d.Item_ID"                 AS key_id,
+    COALESCE(NULLIF(TRIM(t."d.SKU"), ''), '' || t."d.Item_ID") AS key_label,
+    t."d.SKU"                     AS sku,
+    t.On_Hand_Qty                 AS on_hand,
+    t."d.Avg_Demand_Used"        AS avg_demand,
+    t.Coverage_Months             AS coverage,
+    t.Stock_Shortfall             AS stock_shortfall,
+    t."lp.Last_Purchase_Price"   AS last_price_lp,
+    t.Last_Purchase_Price_Fallback AS last_price_fb,
+    t."st.Current_Unit_Rate"     AS unit_rate_crc,
+    t."d.Sales_24M_Qty"          AS sales_24m_qty,
+    t."d.Sales_24M_Net"          AS sales_24m_net,
+    t.Last_Purchase_Date          AS last_purchase_date
+  FROM item_snapshot_enriched_flat_tbl_v2 t
+)
+SELECT
+  p.policy_months,
+  COUNT(DISTINCT CASE
+    WHEN (b.sku IS NULL OR (b.sku NOT LIKE '800-%' AND b.sku NOT LIKE '2000-%'))
+     AND NOT (b.sku IS NULL AND b.on_hand IS NOT NULL AND b.on_hand > 0)
+    THEN b.key_label END)                      AS Total_SKUs,
+  COUNT(DISTINCT CASE
+    WHEN (b.avg_demand IS NOT NULL AND CAST(b.avg_demand AS DOUBLE) > 0)
+     AND (b.sku IS NULL OR (b.sku NOT LIKE '800-%' AND b.sku NOT LIKE '2000-%'))
+     AND NOT (b.sku IS NULL AND b.on_hand IS NOT NULL AND b.on_hand > 0)
+     AND (
+          (b.on_hand IS NOT NULL AND b.avg_demand IS NOT NULL AND (p.policy_months * b.avg_demand - b.on_hand) > 0)
+          OR (b.coverage IS NOT NULL AND b.coverage <= p.policy_months)
+     )
+    THEN b.key_label END)                      AS Reorder_Candidates,
+  COUNT(DISTINCT CASE
+    WHEN (b.avg_demand IS NOT NULL AND CAST(b.avg_demand AS DOUBLE) > 0)
+     AND (b.on_hand IS NOT NULL)
+     AND (b.coverage IS NOT NULL AND b.coverage <= 0)
+     AND (b.sku IS NULL OR (b.sku NOT LIKE '800-%' AND b.sku NOT LIKE '2000-%'))
+     AND NOT (b.sku IS NULL AND b.on_hand IS NOT NULL AND b.on_hand > 0)
+    THEN b.key_label END)                      AS Reorder_Now_Strict,
+  COUNT(DISTINCT CASE WHEN b.on_hand IS NOT NULL AND NOT (b.sku IS NULL AND b.on_hand > 0)
+    THEN b.key_label END)                      AS Items_With_SOH,
+  COUNT(DISTINCT CASE WHEN COALESCE(b.last_price_lp, b.last_price_fb) IS NOT NULL
+    THEN b.key_label END)                      AS Items_With_Last_Purchase,
+  COUNT(DISTINCT CASE WHEN COALESCE(b.unit_rate_crc, NULL) IS NOT NULL AND COALESCE(b.unit_rate_crc, NULL) > 0
+    THEN b.key_label END)                      AS Items_With_Unit_Rate,
+  CAST(SUM(CASE WHEN b.on_hand IS NOT NULL AND COALESCE(b.unit_rate_crc, NULL) IS NOT NULL AND b.on_hand > 0 AND COALESCE(b.unit_rate_crc, NULL) > 0
+           THEN b.on_hand * COALESCE(b.unit_rate_crc, NULL) ELSE 0 END) AS DOUBLE) AS Inventory_Value_CRC,
+  CAST(SUM(CASE WHEN b.on_hand IS NOT NULL AND b.avg_demand IS NOT NULL AND (p.policy_months * b.avg_demand - b.on_hand) > 0
+           THEN (p.policy_months * b.avg_demand - b.on_hand) ELSE 0 END) AS DOUBLE) AS Total_Shortfall_Units,
+  CAST(AVG(CASE WHEN b.coverage IS NOT NULL AND b.coverage BETWEEN 0 AND (p.policy_months * 12) THEN b.coverage END) AS DOUBLE) AS Avg_Coverage_Months,
+  CAST(CASE WHEN SUM(CASE WHEN b.coverage IS NOT NULL THEN 1 ELSE 0 END) = 0 THEN NULL ELSE
+      100.0 * SUM(CASE WHEN b.coverage IS NOT NULL AND b.coverage <= p.policy_months THEN 1 ELSE 0 END)
+        / SUM(CASE WHEN b.coverage IS NOT NULL THEN 1 ELSE 0 END) END AS DOUBLE) AS Pct_Below_Policy,
+  CAST(AVG(CASE WHEN b.last_price_lp IS NOT NULL AND b.last_price_fb IS NOT NULL AND b.last_price_fb > 0
+           THEN (b.last_price_lp - b.last_price_fb) / b.last_price_fb * 100.0 END) AS DOUBLE) AS Avg_Cost_Delta_Pct,
+  MAX(COALESCE(b.last_purchase_date, NULL)) AS Last_Purchase_Date_Any,
+  MAX(COALESCE(b.last_price_lp, b.last_price_fb)) AS Last_Purchase_Price_Any,
+  CAST(AVG(CASE WHEN b.avg_demand IS NOT NULL THEN b.avg_demand END) AS DOUBLE) AS Avg_Monthly_Demand,
+  CAST(SUM(COALESCE(b.sales_24m_qty, 0)) AS DOUBLE) AS Total_Sales_24M_Qty,
+  CAST(SUM(COALESCE(b.sales_24m_net, 0)) AS DOUBLE) AS Total_Sales_24M_Net
+FROM policies p
+CROSS JOIN base b
+WHERE (b.sku IS NULL OR (b.sku NOT LIKE '800-%' AND b.sku NOT LIKE '2000-%'))
+  AND NOT ((b.sku IS NULL OR TRIM(b.sku) = '') AND b.on_hand IS NOT NULL AND b.on_hand > 0)
+GROUP BY p.policy_months
+ORDER BY p.policy_months;
 
 /* End of bundle */
