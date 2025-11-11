@@ -1,0 +1,183 @@
+// Admin utility: Approve the current Item Monthly Sales record only
+// Signature (Books): void <name>(Map cm_item_monthly_sales, Map organization, Map user)
+
+// Resolve org and API root
+org_id_val = "";
+if(organization != null)
+{
+	org_id_val = ifnull(organization.get("organization_id"), "");
+}
+if(org_id_val == "" && user != null)
+{
+	org_id_val = ifnull(user.get("org_id"), "");
+}
+if(org_id_val == "")
+{
+	info "Approve current: missing organization_id";
+	return;
+}
+
+apiRoot = "";
+if(organization != null)
+{
+	apiRoot = ifnull(organization.get("api_root_endpoint"), "");
+}
+if(apiRoot == "")
+{
+	apiRoot = "https://www.zohoapis.com/books/v3";
+}
+
+// Get the current record id
+recId = "";
+if(cm_item_monthly_sales != null)
+{
+	recId = ifnull(cm_item_monthly_sales.get("module_record_id"), "");
+}
+if(recId == "")
+{
+	info "Approve current: module_record_id not found on context record.";
+	return;
+}
+
+// Determine working endpoint
+endpoints = List();
+endpoints.add(apiRoot + "/custommodules/cm_item_monthly_sales");
+endpoints.add(apiRoot + "/custommodules/cm_item_monthly_sales/records");
+
+matchedEp = "";
+// quick probe to select the endpoint
+probeParams = Map();
+probeParams.put("organization_id", org_id_val);
+probeParams.put("page", 1);
+probeParams.put("per_page", 1);
+resp = invokeurl
+[
+	url : endpoints.get(0)
+	type : GET
+	parameters : probeParams
+	connection : "booksconnection"
+];
+if(resp != null)
+{
+	matchedEp = endpoints.get(0);
+}
+else
+{
+	matchedEp = endpoints.get(1);
+}
+
+// Build canonical update URL and approve (always use /records/{id})
+updateRoot = apiRoot + "/custommodules/cm_item_monthly_sales/records";
+updateUrl = updateRoot + "/" + recId;
+payload = Map();
+payload.put("status", "approved");
+updParams = Map();
+updParams.put("organization_id", org_id_val);
+updParams.put("JSONString", payload.toString());
+
+// Optional: fetch before/after to confirm status
+// BEFORE
+paramsFetch = Map();
+paramsFetch.put("organization_id", org_id_val);
+before = invokeurl
+[
+	url : updateUrl
+	type : GET
+	parameters : paramsFetch
+	connection : "booksconnection"
+];
+beforeStatus = "";
+beforeSku = "";
+if(before != null)
+{
+	candidate = before;
+	if(before.containsKey("records"))
+	{
+		lst = before.get("records");
+		if(lst != null && lst.size() > 0)
+		{
+			candidate = lst.get(0);
+		}
+	}
+	else if(before.containsKey("data"))
+	{
+		lst2 = before.get("data");
+		if(lst2 != null && lst2.size() > 0)
+		{
+			candidate = lst2.get(0);
+		}
+	}
+	else if(before.containsKey("cm_item_monthly_sales"))
+	{
+		lst3 = before.get("cm_item_monthly_sales");
+		if(lst3 != null && lst3.size() > 0)
+		{
+			candidate = lst3.get(0);
+		}
+	}
+	beforeStatus = ifnull(candidate.get("status"), "");
+	beforeSku = ifnull(candidate.get("cf_sku"), "");
+}
+
+// UPDATE
+ok = false;
+try
+{
+	upd = invokeurl
+	[
+		url : updateUrl
+		type : PUT
+		parameters : updParams
+		connection : "booksconnection"
+	];
+	ok = true;
+}
+catch (e)
+{
+	info "Approve current failed for record " + recId + ": " + e.toString();
+}
+
+// AFTER
+if(ok)
+{
+	after = invokeurl
+	[
+		url : updateUrl
+		type : GET
+		parameters : paramsFetch
+		connection : "booksconnection"
+	];
+	afterStatus = "";
+	if(after != null)
+	{
+		cand2 = after;
+		if(after.containsKey("records"))
+		{
+			l = after.get("records");
+			if(l != null && l.size() > 0)
+			{
+				cand2 = l.get(0);
+			}
+		}
+		else if(after.containsKey("data"))
+		{
+			l2 = after.get("data");
+			if(l2 != null && l2.size() > 0)
+			{
+				cand2 = l2.get(0);
+			}
+		}
+		else if(after.containsKey("cm_item_monthly_sales"))
+		{
+			l3 = after.get("cm_item_monthly_sales");
+			if(l3 != null && l3.size() > 0)
+			{
+				cand2 = l3.get(0);
+			}
+		}
+		afterStatus = ifnull(cand2.get("status"), "");
+	}
+	info "Approved record: " + recId + " (SKU: " + beforeSku + ") status " + beforeStatus + " -> " + afterStatus;
+}
+
+return;

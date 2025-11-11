@@ -1,0 +1,151 @@
+// Admin utility: Bulk-approve all draft records in cm_item_monthly_sales
+// Signature (Books): void <name>(Map anyRecord, Map organization, Map user)
+
+// Resolve org and API root
+org_id_val = "";
+if(organization != null)
+{
+	org_id_val = ifnull(organization.get("organization_id"), "");
+}
+if(org_id_val == "" && user != null)
+{
+	org_id_val = ifnull(user.get("org_id"), "");
+}
+if(org_id_val == "")
+{
+	info "Bulk approve: missing organization_id";
+	return;
+}
+
+apiRoot = "";
+if(organization != null)
+{
+	apiRoot = ifnull(organization.get("api_root_endpoint"), "");
+}
+if(apiRoot == "")
+{
+	apiRoot = "https://www.zohoapis.com/books/v3";
+}
+
+// Determine working endpoint
+endpoints = List();
+endpoints.add(apiRoot + "/custommodules/cm_item_monthly_sales");
+endpoints.add(apiRoot + "/custommodules/cm_item_monthly_sales/records");
+
+matchedEp = "";
+probeParams = Map();
+probeParams.put("organization_id", org_id_val);
+probeParams.put("page", 1);
+probeParams.put("per_page", 1);
+probeParams.put("status", "draft");
+for each ep in endpoints
+{
+	resp = invokeurl
+	[
+		url : ep
+		type : GET
+		parameters : probeParams
+		connection : "booksconnection"
+	];
+	list1 = List();
+	if(resp != null)
+	{
+		if(resp.containsKey("records"))
+		{
+			list1 = resp.get("records");
+		}
+		else if(resp.containsKey("data"))
+		{
+			list1 = resp.get("data");
+		}
+		else if(resp.containsKey("cm_item_monthly_sales"))
+		{
+			list1 = resp.get("cm_item_monthly_sales");
+		}
+	}
+	if(list1 != null && list1.size() >= 0)
+	{
+		matchedEp = ep;
+		break;
+	}
+}
+if(matchedEp == "")
+{
+	info "Bulk approve: unable to detect endpoint for custom module.";
+	return;
+}
+
+// Iterate pages of draft records and approve
+perPage = 200;
+totalUpdated = 0;
+totalFailed = 0;
+
+// Single-page run (approve up to 200 draft records). Re-run to continue.
+q = Map();
+q.put("organization_id", org_id_val);
+q.put("page", 1);
+q.put("per_page", perPage);
+q.put("status", "draft");
+res = invokeurl
+[
+	url : matchedEp
+	type : GET
+	parameters : q
+	connection : "booksconnection"
+];
+rows = List();
+if(res != null)
+{
+	if(res.containsKey("records"))
+	{
+		rows = res.get("records");
+	}
+	else if(res.containsKey("data"))
+	{
+		rows = res.get("data");
+	}
+	else if(res.containsKey("cm_item_monthly_sales"))
+	{
+		rows = res.get("cm_item_monthly_sales");
+	}
+}
+if(rows == null || rows.size() == 0)
+{
+	info "No draft records found on this page. Re-run if you have more pages.";
+}
+else
+{
+	for each r in rows
+	{
+		id = ifnull(r.get("module_record_id"), "");
+		if(id == "")
+		{
+			continue;
+		}
+		updateUrl = matchedEp + "/" + id;
+		payload = Map();
+		payload.put("status", "approved");
+		updParams = Map();
+		updParams.put("organization_id", org_id_val);
+		updParams.put("JSONString", payload.toString());
+		try
+		{
+			upd = invokeurl
+			[
+				url : updateUrl
+				type : PUT
+				parameters : updParams
+				connection : "booksconnection"
+			];
+			totalUpdated = totalUpdated + 1;
+		}
+		catch (e)
+		{
+			totalFailed = totalFailed + 1;
+			info "Failed to approve record " + id + ": " + e.toString();
+		}
+	}
+}
+
+info "Bulk approve complete. Updated: " + totalUpdated + ", Failed: " + totalFailed + ".";
+return;

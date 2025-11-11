@@ -1,0 +1,555 @@
+// Custom Button Function (Item Monthly Sales): Lookup Sales by SKU
+// Returns an HTML message in a result map for Zoho Books custom button UI
+// Button arguments to configure:
+//   - org_id (string, required) -> Static: your Books org id
+//   - sku (string, optional)    -> User Input (prompt) OR map from cf_sku
+//   - months (integer, optional)-> User Input (default 24)
+//   - module_api_name (string, optional) -> Static: "cm_item_monthly_sales"
+// Context object available from button on this module: cm_item_monthly_sales
+
+resultMap = Map();
+// Default module; if you want to override, declare an argument named 'module_api_name' and set it,
+// or simply change this default. We avoid referencing an undeclared argument directly to prevent runtime errors.
+module_api_name_val = "cm_item_monthly_sales";
+org_id_val = "";
+if(organization != null)
+{
+    org_id_val = ifnull(organization.get("organization_id"), "");
+}
+if(org_id_val == "")
+{
+    if(user != null)
+    {
+        org_id_val = ifnull(user.get("org_id"), "");
+    }
+}
+// Prefer prompted SKU if provided; otherwise fall back to context record
+sku_in = "";
+try
+{
+    sku_in = ifnull(sku, "");
+}
+catch (e)
+{
+    sku_in = "";
+}
+sku = sku_in;
+if(sku == "" && cm_item_monthly_sales != null)
+{
+    sku = ifnull(cm_item_monthly_sales.get("cf_sku"), "");
+}
+sku = sku.trim();
+if(org_id_val == "")
+{
+    resultMap.put("message", "Cannot determine org id from user map. Map 'user.organization_id' or add a static org_id argument.");
+    resultMap.put("code", 1);
+    return resultMap;
+}
+// Optional months argument (1..36), default 24
+// To override, add a function argument named 'months' in the UI; otherwise we keep the safe default here
+months_num = 24;
+months_back = months_num - 1;
+months_back = months_back * -1;
+cutoff_key = zoho.currentdate.addMonth(months_back).toString("yyyy-MM");
+curr_code = "";
+if(organization != null)
+{
+    curr_code = ifnull(organization.get("currency_code"), "");
+}
+if(curr_code == "")
+{
+    curr_code = "CRC";
+}
+// Resolve correct custom module API name by probing candidates with a no-criteria call
+// Link-name candidates: provided arg, item_monthly_sales, cm_item_monthly_sales
+link_name_candidates = List();
+if(module_api_name_val != "")
+{
+    link_name_candidates.add(module_api_name_val);
+}
+if(!link_name_candidates.contains("item_monthly_sales"))
+{
+    link_name_candidates.add("item_monthly_sales");
+}
+if(!link_name_candidates.contains("cm_item_monthly_sales"))
+{
+    link_name_candidates.add("cm_item_monthly_sales");
+}
+
+// Books custom modules API paths are under 'custommodules/{link_name}'. Some SDKs also accept raw link_name.
+// We'll try both for each link_name.
+module_candidates = List();
+for each ln in link_name_candidates
+{
+    module_candidates.add(ln);
+    module_candidates.add("custommodules/" + ln);
+}
+
+picked = "";
+for each cand in module_candidates
+{
+    testParams = {"per_page":"1","page":"1","sort_column":"cf_month_year","sort_order":"d"};
+    testRes = zoho.books.getRecords(cand, org_id_val, testParams, "booksconnection");
+    testRows = List();
+    if(testRes != null)
+    {
+        if(testRes.containsKey(cand))
+        {
+            testRows = testRes.get(cand);
+        }
+        else if(testRes.containsKey("data"))
+        {
+            testRows = testRes.get("data");
+        }
+        else if(testRes.containsKey("records"))
+        {
+            testRows = testRes.get("records");
+        }
+    }
+    if(testRows != null && testRows.size() > 0)
+    {
+        picked = cand;
+        break;
+    }
+}
+if(picked != "")
+{
+    module_api_name_val = picked;
+}
+
+// Query by SKU only; month filtering will be applied client-side to avoid API operator limitations on text fields
+criteria = "(cf_sku=='" + sku + "')";
+params = Map();
+params.put("criteria", criteria);
+params.put("sort_column", "cf_month_year");
+params.put("sort_order", "d");
+params.put("per_page", "200");
+params.put("page", "1");
+params.put("select_fields", "cf_month_year,cf_total_quantity,cf_net_sales,cf_item_id,cf_sku,cf_item_name");
+res = zoho.books.getRecords(module_api_name_val, org_id_val, params, "booksconnection");
+rows = List();
+if(res != null)
+{
+    if(res.containsKey(module_api_name_val))
+    {
+        rows = res.get(module_api_name_val);
+    }
+    else if(res.containsKey("data"))
+    {
+        rows = res.get("data");
+    }
+    else if(res.containsKey("records"))
+    {
+        rows = res.get("records");
+    }
+}
+if(rows == null || rows.size() == 0)
+{
+    // Fallback: call REST API directly via invokeurl against custommodules/{link_name}
+    for each ln_try in link_name_candidates
+    {
+    apiPath = "custommodules/" + ln_try + "/records";
+    url_try = "https://books.zoho.com/api/v3/" + apiPath + "?organization_id=" + org_id_val + "&page=1&per_page=200&sort_column=cf_month_year&sort_order=d&criteria=" + encodeUrl(criteria);
+        restRes = invokeurl
+        [
+            url : url_try
+            type : GET
+            connection : "booksconnection"
+        ];
+        if(restRes != null)
+        {
+            trows = List();
+            if(restRes.containsKey("records"))
+            {
+                trows = restRes.get("records");
+            }
+            else if(restRes.containsKey(ln_try))
+            {
+                trows = restRes.get(ln_try);
+            }
+            else if(restRes.containsKey("data"))
+            {
+                trows = restRes.get("data");
+            }
+            if(trows != null && trows.size() > 0)
+            {
+                rows = trows;
+                module_api_name_val = apiPath;
+                break;
+            }
+        }
+    }
+}
+if(rows == null || rows.size() == 0)
+{
+    criteria2 = "(cf_sku:equals:" + sku + ")";
+    params2 = Map();
+    params2.put("criteria", criteria2);
+    params2.put("sort_column", "cf_month_year");
+    params2.put("sort_order", "d");
+    params2.put("per_page", "200");
+    params2.put("page", "1");
+    params2.put("select_fields", "cf_month_year,cf_total_quantity,cf_net_sales,cf_item_id,cf_sku,cf_item_name");
+    res2 = zoho.books.getRecords(module_api_name_val, org_id_val, params2, "booksconnection");
+    if(res2 != null)
+    {
+        if(res2.containsKey(module_api_name_val))
+        {
+            rows = res2.get(module_api_name_val);
+        }
+        else if(res2.containsKey("data"))
+        {
+            rows = res2.get("data");
+        }
+        else if(res2.containsKey("records"))
+        {
+            rows = res2.get("records");
+        }
+    }
+}
+if(rows == null || rows.size() == 0)
+{
+    criteria3 = "(cf_sku:contains:" + sku + ")";
+    params3 = Map();
+    params3.put("criteria", criteria3);
+    params3.put("sort_column", "cf_month_year");
+    params3.put("sort_order", "d");
+    params3.put("per_page", "200");
+    params3.put("page", "1");
+    params3.put("select_fields", "cf_month_year,cf_total_quantity,cf_net_sales,cf_item_id,cf_sku,cf_item_name");
+    res3 = zoho.books.getRecords(module_api_name_val, org_id_val, params3, "booksconnection");
+    if(res3 != null)
+    {
+        if(res3.containsKey(module_api_name_val))
+        {
+            rows = res3.get(module_api_name_val);
+        }
+        else if(res3.containsKey("data"))
+        {
+            rows = res3.get("data");
+        }
+        else if(res3.containsKey("records"))
+        {
+            rows = res3.get("records");
+        }
+    }
+}
+if(rows == null || rows.size() == 0)
+{
+    criteria4 = "(status=='draft') and (cf_sku=='" + sku + "')";
+    params4 = Map();
+    params4.put("criteria", criteria4);
+    params4.put("sort_column", "cf_month_year");
+    params4.put("sort_order", "d");
+    params4.put("per_page", "200");
+    params4.put("page", "1");
+    params4.put("select_fields", "cf_month_year,cf_total_quantity,cf_net_sales,cf_item_id,cf_sku,cf_item_name");
+    res4 = zoho.books.getRecords(module_api_name_val, org_id_val, params4, "booksconnection");
+    if(res4 != null)
+    {
+        if(res4.containsKey(module_api_name_val))
+        {
+            rows = res4.get(module_api_name_val);
+        }
+        else if(res4.containsKey("data"))
+        {
+            rows = res4.get("data");
+        }
+        else if(res4.containsKey("records"))
+        {
+            rows = res4.get("records");
+        }
+    }
+}
+if(rows == null || rows.size() == 0)
+{
+    criteria5 = "(status=='draft')";
+    params5 = Map();
+    params5.put("criteria", criteria5);
+    params5.put("sort_column", "cf_month_year");
+    params5.put("sort_order", "d");
+    params5.put("per_page", "200");
+    params5.put("page", "1");
+    params5.put("select_fields", "cf_month_year,cf_total_quantity,cf_net_sales,cf_item_id,cf_sku,cf_item_name");
+    res5 = zoho.books.getRecords(module_api_name_val, org_id_val, params5, "booksconnection");
+    if(res5 != null)
+    {
+        temp_rows = List();
+        if(res5.containsKey(module_api_name_val))
+        {
+            temp_rows = res5.get(module_api_name_val);
+        }
+        else if(res5.containsKey("data"))
+        {
+            temp_rows = res5.get("data");
+        }
+        else if(res5.containsKey("records"))
+        {
+            temp_rows = res5.get("records");
+        }
+        if(temp_rows != null)
+        {
+            rows = List();
+            for each t in temp_rows
+            {
+                sk = ifnull(t.get("cf_sku"), "");
+                if(sk == sku)
+                {
+                    rows.add(t);
+                    if(rows.size() >= 200)
+                    {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+}
+if(rows == null || rows.size() == 0)
+{
+    tried = "Tried criteria: " + criteria + "; " + criteria2 + "; " + criteria3 + "; " + criteria4 + "; " + criteria5 + ". Module tried: '" + module_api_name_val + "' (candidates: " + module_candidates.toString() + ")";
+    // Final diagnostic: fetch top records with no criteria to validate access and field names
+    diagParams = Map();
+    diagParams.put("per_page", "5");
+    diagParams.put("page", "1");
+    diagParams.put("sort_column", "cf_month_year");
+    diagParams.put("sort_order", "d");
+    diagRes = zoho.books.getRecords(module_api_name_val, org_id_val, diagParams, "booksconnection");
+    diagRows = List();
+    if(diagRes != null)
+    {
+        if(diagRes.containsKey(module_api_name_val))
+        {
+            diagRows = diagRes.get(module_api_name_val);
+        }
+        else if(diagRes.containsKey("data"))
+        {
+            diagRows = diagRes.get("data");
+        }
+        else if(diagRes.containsKey("records"))
+        {
+            diagRows = diagRes.get("records");
+        }
+    }
+    diagMsg = "No sales found for SKU " + sku + ". " + tried + ". ";
+    if(diagRows != null && diagRows.size() > 0)
+    {
+        sample = "Sample SKUs:";
+        for each d in diagRows
+        {
+            sm = ifnull(d.get("cf_month_year"), "");
+            ssku = ifnull(d.get("cf_sku"), "");
+            sample = sample + " [" + ssku + " @ " + sm + "]";
+        }
+        diagMsg = diagMsg + sample;
+    }
+    else
+    {
+        // Even if we can't list modules, try sampling from link_name candidates directly (no criteria)
+        altSamples = "";
+        for each ln_s in link_name_candidates
+        {
+            sUrl = "https://books.zoho.com/api/v3/custommodules/" + ln_s + "/records?organization_id=" + org_id_val + "&per_page=3&page=1&sort_order=d";
+            sRes = invokeurl
+            [
+                url : sUrl
+                type : GET
+                connection : "booksconnection"
+            ];
+            sRows = List();
+            if(sRes != null)
+            {
+                if(sRes.containsKey("records"))
+                {
+                    sRows = sRes.get("records");
+                }
+                else if(sRes.containsKey(ln_s))
+                {
+                    sRows = sRes.get(ln_s);
+                }
+                else if(sRes.containsKey("data"))
+                {
+                    sRows = sRes.get("data");
+                }
+            }
+            if(sRows != null && sRows.size() > 0)
+            {
+                sLine2 = " " + ln_s + ":";
+                for each sr2 in sRows
+                {
+                    ssku3 = ifnull(sr2.get("cf_sku"), "");
+                    sm3 = ifnull(sr2.get("cf_month_year"), "");
+                    sLine2 = sLine2 + " [" + ssku3 + " @ " + sm3 + "]";
+                }
+                altSamples = altSamples + sLine2;
+            }
+        }
+        if(altSamples != "")
+        {
+            diagMsg = diagMsg + " SamplesAlt:" + altSamples;
+        }
+        // If still empty, list available custom modules to guide the correct API name
+        modsMsg = "";
+        try
+        {
+            modsUrl = "https://books.zoho.com/api/v3/settings/custommodules?organization_id=" + org_id_val;
+            modsRes = invokeurl
+            [
+                url : modsUrl
+                type : GET
+                connection : "booksconnection"
+            ];
+            cms = List();
+            // Try common keys first
+            if(modsRes != null)
+            {
+                if(modsRes.containsKey("custom_modules"))
+                {
+                    cms = modsRes.get("custom_modules");
+                }
+                else if(modsRes.containsKey("modules"))
+                {
+                    cms = modsRes.get("modules");
+                }
+                else if(modsRes.containsKey("data"))
+                {
+                    cms = modsRes.get("data");
+                }
+                // If none of the known keys matched, leave cms empty (skip fallback keySet usage to avoid runtime errors)
+            }
+            if(cms != null && cms.size() > 0)
+            {
+                modsMsg = " Available modules:";
+                firstLn = "";
+                for each cm in cms
+                {
+                    ln = ifnull(cm.get("link_name"), "");
+                    dn = ifnull(cm.get("display_name"), "");
+                    mid = ifnull(cm.get("custom_module_id"), ifnull(cm.get("module_id"), ifnull(cm.get("id"), "")));
+                    if(firstLn == "" && ln != "")
+                    {
+                        firstLn = ln;
+                    }
+                    if(mid != "")
+                    {
+                        modsMsg = modsMsg + " [" + ln + " (" + dn + ", id=" + mid + ")]";
+                    }
+                    else
+                    {
+                        modsMsg = modsMsg + " [" + ln + " (" + dn + ")]";
+                    }
+                }
+                // Probe the first module via direct API to hint the working path
+                if(firstLn != "")
+                {
+                    probeUrl = "https://books.zoho.com/api/v3/custommodules/" + firstLn + "/records?organization_id=" + org_id_val + "&per_page=1&page=1";
+                    probeRes = invokeurl
+                    [
+                        url : probeUrl
+                        type : GET
+                        connection : "booksconnection"
+                    ];
+                    prKeys = if(probeRes != null, probeRes.toString(), "null");
+                    modsMsg = modsMsg + " ProbeKeys=" + prKeys;
+                }
+
+                // Also try fetching a few sample rows without criteria from each candidate link_name to surface field names
+                samples = "";
+                for each cm2 in cms
+                {
+                    ln2 = ifnull(cm2.get("link_name"), "");
+                    if(ln2 != "")
+                    {
+                        sampUrl = "https://books.zoho.com/api/v3/custommodules/" + ln2 + "/records?organization_id=" + org_id_val + "&per_page=3&page=1&sort_order=d";
+                        sampRes = invokeurl
+                        [
+                            url : sampUrl
+                            type : GET
+                            connection : "booksconnection"
+                        ];
+                        sampRows = List();
+                        if(sampRes != null)
+                        {
+                            if(sampRes.containsKey("records"))
+                            {
+                                sampRows = sampRes.get("records");
+                            }
+                            else if(sampRes.containsKey(ln2))
+                            {
+                                sampRows = sampRes.get(ln2);
+                            }
+                            else if(sampRes.containsKey("data"))
+                            {
+                                sampRows = sampRes.get("data");
+                            }
+                        }
+                        if(sampRows != null && sampRows.size() > 0)
+                        {
+                            sLine = " " + ln2 + ":";
+                            for each sr in sampRows
+                            {
+                                ssku2 = ifnull(sr.get("cf_sku"), "");
+                                sm2 = ifnull(sr.get("cf_month_year"), "");
+                                sLine = sLine + " [" + ssku2 + " @ " + sm2 + "]";
+                            }
+                            samples = samples + sLine;
+                        }
+                    }
+                }
+                if(samples != "")
+                {
+                    modsMsg = modsMsg + " Samples:" + samples;
+                }
+            }
+        }
+        catch(ex)
+        {
+            modsMsg = modsMsg + " (Could not list custom modules: " + ex.toString() + ")";
+        }
+        diagMsg = diagMsg + "API returned 0 records without criteria. Verify connection 'booksconnection', module '" + module_api_name_val + "', and org_id " + org_id_val + "." + modsMsg;
+    }
+    resultMap.put("message", diagMsg);
+    resultMap.put("code", 0);
+    return resultMap;
+}
+// Client-side month filtering and limiting to last N months
+selected = List();
+for each r_all in rows
+{
+    m_all = ifnull(r_all.get("cf_month_year"), "");
+    if(m_all != "")
+    {
+        if(m_all >= cutoff_key)
+        {
+            selected.add(r_all);
+            if(selected.size() >= months_num)
+            {
+                break;
+            }
+        }
+    }
+}
+if(selected == null || selected.size() == 0)
+{
+    resultMap.put("message", "No sales found for SKU " + sku + " since " + cutoff_key + ". Retrieved " + rows.size() + " rows for this SKU.");
+    resultMap.put("code", 0);
+    return resultMap;
+}
+total_qty = 0.0;
+total_sales = 0.0;
+hdr = "<style>table{border-collapse:collapse} td,th{border:1px solid #ddd;padding:6px} th{background:#f7f7f7}</style>";
+html = hdr + "<div><b>SKU:</b> " + sku + " &nbsp; <b>From:</b> " + cutoff_key + "</div>";
+html = html + "<table><thead><tr><th>Month</th><th>Qty</th><th>Net Sales (" + curr_code + ")</th></tr></thead><tbody>";
+for each r in selected
+{
+    m = ifnull(r.get("cf_month_year"), "");
+    q = toDecimal(ifnull(r.get("cf_total_quantity"), "0"));
+    s = toDecimal(ifnull(r.get("cf_net_sales"), "0"));
+    total_qty = total_qty + q;
+    total_sales = total_sales + s;
+    html = html + "<tr><td>" + m + "</td><td style='text-align:right'>" + q + "</td><td style='text-align:right'>" + s + "</td></tr>";
+}
+html = html + "</tbody><tfoot><tr><th>Total</th><th style='text-align:right'>" + total_qty + "</th><th style='text-align:right'>" + total_sales + "</th></tr></tfoot></table>";
+resultMap.put("message", html);
+resultMap.put("code", 0);
+return resultMap;

@@ -1,0 +1,664 @@
+// Workflow Custom Function (Item Monthly Sales): Simple Lookup Sales by SKU
+// Minimal version: one endpoint, client-side filter, scans all pages until last page.
+// Signature (Books auto-added): void <name>(Map cm_item_monthly_sales, Map organization, Map user)
+// NOTE: Do NOT wrap this file in a function when pasting into Books; the editor injects the wrapper for you.
+
+// Debug flag (can be overridden by record field cf_debug = true/false or 1/0)
+// Default off to minimize statements and avoid hitting platform statement limits.
+debug_on = false;
+try
+{
+    if(cm_item_monthly_sales != null)
+    {
+        dbg_in = ifnull(cm_item_monthly_sales.get("cf_debug"), "");
+        if(dbg_in != "")
+        {
+            dbg_s = ("" + dbg_in).toLowerCase();
+            if(dbg_s == "true" || dbg_s == "1")
+            {
+                debug_on = true;
+            }
+            if(dbg_s == "false" || dbg_s == "0")
+            {
+                debug_on = false;
+            }
+        }
+    }
+}
+catch(_dbg_ignore)
+{
+}
+
+// Resolve org id
+org_id_val = "";
+if(organization != null)
+{
+    org_id_val = ifnull(organization.get("organization_id"), "");
+}
+if(org_id_val == "" && user != null)
+{
+    org_id_val = ifnull(user.get("org_id"), "");
+}
+// Fallback org id for diagnostics when not provided in inputs
+if(org_id_val == "")
+{
+    if(debug_on)
+    {
+        info "Org id not found in inputs. Using fallback org_id 815317243 (debug).";
+    }
+    org_id_val = "815317243";
+}
+
+// Read SKU and optional months
+sku = "";
+if(cm_item_monthly_sales != null)
+{
+    sku = ifnull(cm_item_monthly_sales.get("cf_sku"), "");
+}
+sku = sku.trim();
+if(sku == "")
+{
+    return "Missing SKU on record (cf_sku).";
+}
+months_num = 24;
+try
+{
+    m_in = ifnull(cm_item_monthly_sales.get("cf_months"), "");
+    if(m_in != "")
+    {
+        m_try = toLong(m_in);
+        if(m_try > 0)
+        {
+            months_num = if(m_try > 36, 36, m_try);
+        }
+    }
+}
+catch(ignore)
+{
+}
+
+// Build cutoff YYYYMM numeric
+months_back = (months_num - 1) * -1;
+cutoff_key = zoho.currentdate.addMonth(months_back).toString("yyyy-MM");
+cutoff_num = 0;
+try
+{
+    cutoff_num = toLong(cutoff_key.replaceAll("-", ""));
+}
+catch(ignore2)
+{
+}
+
+// API root and endpoint
+apiRoot = "";
+if(organization != null)
+{
+    apiRoot = ifnull(organization.get("api_root_endpoint"), "");
+}
+if(apiRoot == "")
+{
+    apiRoot = "https://www.zohoapis.com/books/v3";
+}
+basePath = apiRoot + "/cm_item_monthly_sales";
+
+// Attempt server-side criteria filtering first to drastically reduce statements.
+// If criteria is supported and returns rows, we bypass the full paging scan.
+selected = List();
+try
+{
+    crit_params = Map();
+    crit_params.put("organization_id", org_id_val);
+    // criteria syntax: (field == "value") AND (field >= "value")
+    crit_expr = "(cf_sku == \"" + sku + "\")" + " and (cf_month_year >= \"" + cutoff_key + "\")";
+    crit_params.put("criteria", crit_expr);
+    crit_params.put("sort_column", "cf_month_year");
+    crit_params.put("sort_order", "D");
+    // Request up to months_num rows directly
+    crit_params.put("page", 1);
+    crit_params.put("per_page", months_num);
+    crit_res = invokeurl [
+        url : basePath
+        type : GET
+        parameters : crit_params
+        connection : "booksconnection"
+    ];
+    crit_rows = List();
+    if(crit_res != null && crit_res.containsKey("module_records"))
+    {
+        crit_rows = crit_res.get("module_records");
+    }
+    if(crit_rows != null && crit_rows.size() > 0)
+    {
+        // Filter & cap
+        for each cr in crit_rows
+        {
+            m_c = ifnull(cr.get("cf_month_year"), "");
+            if(m_c == "") { m_c = ifnull(cr.get("Month_Year"), ""); }
+            if(m_c != "")
+            {
+                m_c_num = 0;
+                try { m_c_num = toLong(m_c.replaceAll("-", "")); } catch(ignoreCrit){}
+                if(m_c_num >= cutoff_num)
+                {
+                    selected.add(cr);
+                }
+                if(selected.size() >= months_num)
+                {
+                    break;
+                }
+            }
+        }
+        if(selected.size() > 0)
+        {
+            if(debug_on)
+            {
+                info "criteria shortcut used -> rows=" + selected.size() + ", expr=" + crit_expr;
+            }
+        }
+    }
+}
+catch(crit_err)
+{
+    if(debug_on)
+    {
+        info "criteria attempt failed (will fallback to paging): " + crit_err;
+    }
+}
+// Only run paging if criteria path did not satisfy selection
+if(selected.size() == 0)
+{
+    // Paging fallback because criteria shortcut returned no rows
+    // Scan pages until last page (early stops applied)
+    done = false;
+pg = 1;
+perp = 200;
+// One-time diagnostics for context
+if(debug_on)
+{
+    info "Lookup SKU context -> org_id: " + org_id_val + ", api: " + basePath + ", per_page: " + perp;
+}
+// Iterate a bounded set of pages (avoid while for Books parser)
+pages = List();
+pages.add(1);
+pages.add(2);
+pages.add(3);
+pages.add(4);
+pages.add(5);
+pages.add(6);
+pages.add(7);
+pages.add(8);
+pages.add(9);
+pages.add(10);
+pages.add(11);
+pages.add(12);
+pages.add(13);
+pages.add(14);
+pages.add(15);
+pages.add(16);
+pages.add(17);
+pages.add(18);
+pages.add(19);
+pages.add(20);
+pages.add(21);
+pages.add(22);
+pages.add(23);
+pages.add(24);
+pages.add(25);
+pages.add(26);
+pages.add(27);
+pages.add(28);
+pages.add(29);
+pages.add(30);
+pages.add(31);
+pages.add(32);
+pages.add(33);
+pages.add(34);
+pages.add(35);
+pages.add(36);
+pages.add(37);
+pages.add(38);
+pages.add(39);
+pages.add(40);
+pages.add(41);
+pages.add(42);
+pages.add(43);
+pages.add(44);
+pages.add(45);
+pages.add(46);
+pages.add(47);
+pages.add(48);
+pages.add(49);
+pages.add(50);
+pages.add(51);
+pages.add(52);
+pages.add(53);
+pages.add(54);
+pages.add(55);
+pages.add(56);
+pages.add(57);
+pages.add(58);
+pages.add(59);
+pages.add(60);
+pages.add(61);
+pages.add(62);
+pages.add(63);
+pages.add(64);
+pages.add(65);
+pages.add(66);
+pages.add(67);
+pages.add(68);
+pages.add(69);
+pages.add(70);
+pages.add(71);
+pages.add(72);
+pages.add(73);
+pages.add(74);
+pages.add(75);
+pages.add(76);
+pages.add(77);
+pages.add(78);
+pages.add(79);
+pages.add(80);
+pages.add(81);
+pages.add(82);
+pages.add(83);
+pages.add(84);
+pages.add(85);
+pages.add(86);
+pages.add(87);
+pages.add(88);
+pages.add(89);
+pages.add(90);
+pages.add(91);
+pages.add(92);
+pages.add(93);
+pages.add(94);
+pages.add(95);
+pages.add(96);
+pages.add(97);
+pages.add(98);
+pages.add(99);
+pages.add(100);
+pages.add(101);
+pages.add(102);
+pages.add(103);
+pages.add(104);
+pages.add(105);
+pages.add(106);
+pages.add(107);
+pages.add(108);
+pages.add(109);
+pages.add(110);
+pages.add(111);
+pages.add(112);
+pages.add(113);
+pages.add(114);
+pages.add(115);
+pages.add(116);
+pages.add(117);
+pages.add(118);
+pages.add(119);
+pages.add(120);
+for each pg_in in pages
+{
+    if(done)
+    {
+        break;
+    }
+    pg = pg_in;
+    params = Map();
+    params.put("organization_id", org_id_val);
+    params.put("page", pg);
+    params.put("per_page", perp);
+    params.put("sort_column", "cf_month_year");
+    params.put("sort_order", "D");
+    res = null;
+    try
+    {
+        res = invokeurl [
+            url : basePath
+            type : GET
+            parameters : params
+            connection : "booksconnection"
+        ];
+    }
+    catch(invoke_err)
+    {
+        return "InvokeURL failed for 'booksconnection': " + invoke_err + ". Tip: Revoke and reconnect the connection, and ensure ZohoBooks.custommodules.READ (or .ALL) scope is granted.";
+    }
+    listRows = List();
+    // Basic response introspection for debugging (avoid keySet which isn't available in Deluge)
+    if(res != null)
+    {
+        try
+        {
+            present_keys = List();
+            if(res.containsKey("code")) { present_keys.add("code"); if(debug_on){ info "resp code: " + res.get("code"); } }
+            if(res.containsKey("message")) { present_keys.add("message"); if(debug_on){ info "resp msg: " + res.get("message"); } }
+            if(res.containsKey("module_records")) { present_keys.add("module_records"); }
+            if(res.containsKey("module_record")) { present_keys.add("module_record"); }
+            if(res.containsKey("records")) { present_keys.add("records"); }
+            if(res.containsKey("data")) { present_keys.add("data"); }
+            if(res.containsKey("page_context")) { present_keys.add("page_context"); }
+            if(debug_on)
+            {
+                info "resp keys (known): " + present_keys;
+            }
+        }
+        catch(ex1)
+        {
+        }
+    }
+    // Track end-of-pages via page_context
+    has_more_flag = null;
+    if(res != null)
+    {
+        if(res.containsKey("module_records"))
+        {
+            listRows = res.get("module_records");
+        }
+        if(listRows == null)
+        {
+            if(res.containsKey("module_record"))
+            {
+                listRows = res.get("module_record");
+            }
+        }
+        if(listRows == null)
+        {
+            if(res.containsKey("records"))
+            {
+                listRows = res.get("records");
+            }
+        }
+        if(listRows == null)
+        {
+            if(res.containsKey("data"))
+            {
+                listRows = res.get("data");
+            }
+        }
+        // Page context diagnostics
+        try
+        {
+            if(res.containsKey("page_context"))
+            {
+                pc = res.get("page_context");
+                has_more_str = "";
+                if(pc != null)
+                {
+                    has_more_val = ifnull(pc.get("has_more_page"), "");
+                    has_more_flag = has_more_val;
+                    page_num = ifnull(pc.get("page"), pg);
+                    perpg = ifnull(pc.get("per_page"), perp);
+                    has_more_str = " has_more_page=" + has_more_val + ", page=" + page_num + ", per_page=" + perpg;
+                }
+                size_info = 0;
+                try
+                {
+                    if(listRows != null)
+                    {
+                        size_info = listRows.size();
+                    }
+                }
+                catch(ei)
+                {
+                }
+                if(debug_on)
+                {
+                    info "page diag -> pg=" + pg + ", rows=" + size_info + has_more_str;
+                }
+            }
+        }
+        catch(pc_ex){}
+        // Early exit if unauthorized (code 57) to avoid misleading 'No sales found'
+        if(res.containsKey("code"))
+        {
+            cval = "" + res.get("code");
+            if(cval == "57")
+            {
+                return "Authorization error (code 57). Connection 'booksconnection' likely missing ZohoBooks.custommodules.READ scope or Custom Modules API access disabled.";
+            }
+        }
+    }
+    // Break if no rows (null or empty)
+    is_empty = false;
+    if(listRows == null)
+    {
+        is_empty = true;
+    }
+    else
+    {
+        if(listRows.size() == 0)
+        {
+            is_empty = true;
+        }
+    }
+    if(is_empty)
+    {
+        // Fallback: try legacy custommodules endpoint once if first page empty
+        if(pg == 1)
+        {
+            legacyPath = apiRoot + "/custommodules/cm_item_monthly_sales/records";
+            legacyParams = Map();
+            legacyParams.put("organization_id", org_id_val);
+            legacyParams.put("page", 1);
+            legacyParams.put("per_page", perp);
+            legacyParams.put("sort_column", "cf_month_year");
+            legacyParams.put("sort_order", "D");
+            legacyRes = null;
+            try
+            {
+                legacyRes = invokeurl [
+                    url : legacyPath
+                    type : GET
+                    parameters : legacyParams
+                    connection : "booksconnection"
+                ];
+            }
+            catch(legacy_err)
+            {
+                info "Legacy invoke failed for 'booksconnection': " + legacy_err;
+                // Continue to final empty check
+            }
+            if(legacyRes != null)
+            {
+                try
+                {
+                    legacy_keys = List();
+                    if(legacyRes.containsKey("code")) { legacy_keys.add("code"); if(debug_on){ info "legacy resp code: " + legacyRes.get("code"); } }
+                    if(legacyRes.containsKey("message")) { legacy_keys.add("message"); if(debug_on){ info "legacy resp msg: " + legacyRes.get("message"); } }
+                    if(legacyRes.containsKey("module_records")) { legacy_keys.add("module_records"); }
+                    if(legacyRes.containsKey("module_record")) { legacy_keys.add("module_record"); }
+                    if(legacyRes.containsKey("records")) { legacy_keys.add("records"); }
+                    if(legacyRes.containsKey("data")) { legacy_keys.add("data"); }
+                    if(legacyRes.containsKey("page_context")) { legacy_keys.add("page_context"); }
+                    if(debug_on)
+                    {
+                        info "legacy resp keys (known): " + legacy_keys;
+                    }
+                }
+                catch(ex2)
+                {
+                }
+                lrows = List();
+                if(legacyRes.containsKey("module_records"))
+                {
+                    lrows = legacyRes.get("module_records");
+                }
+                if(lrows == null && legacyRes.containsKey("records"))
+                {
+                    lrows = legacyRes.get("records");
+                }
+                if(lrows != null && lrows.size() > 0)
+                {
+                    listRows = lrows;
+                    is_empty = false;
+                }
+            }
+        }
+        if(is_empty)
+        {
+            break;
+        }
+    }
+    // Track per-page matches for diagnostics
+    page_matches = 0;
+    page_oldest = "";
+    page_newest = "";
+    // Track last (oldest) month present on the page among ALL records to enable early stop
+    page_last_mnum = 0;
+    page_last_mstr = "";
+    for each r in listRows
+    {
+        // Update last-month tracker for the page (list is sorted by month DESC)
+        m_any = ifnull(r.get("cf_month_year"), "");
+        if(m_any == "") { m_any = ifnull(r.get("Month_Year"), ""); }
+        if(m_any != "")
+        {
+            try
+            {
+                m_any_num = toLong(m_any.replaceAll("-", ""));
+                if(m_any_num > 0)
+                {
+                    page_last_mnum = m_any_num; // will end as the last row's month
+                    page_last_mstr = m_any;
+                    // Since rows are sorted by month DESC, once we hit a row older than cutoff,
+                    // the rest of the page will also be older. Break to reduce statements.
+                    if(m_any_num < cutoff_num)
+                    {
+                        break;
+                    }
+                }
+            }
+            catch(ignore_any){}
+        }
+        s = ifnull(r.get("cf_sku"), "").trim();
+        if(s == "") { s = ifnull(r.get("cf_item_sku"), "").trim(); }
+        if(s == "") { s = ifnull(r.get("Item_SKU"), "").trim(); }
+        if(s == sku)
+        {
+            m = ifnull(r.get("cf_month_year"), "");
+            if(m == "") { m = ifnull(r.get("Month_Year"), ""); }
+            if(m != "")
+            {
+                mnum = 0;
+                try
+                {
+                    mnum = toLong(m.replaceAll("-", ""));
+                }
+                catch(ignore3)
+                {
+                }
+                if(mnum >= cutoff_num)
+                {
+                    selected.add(r);
+                    page_matches = page_matches + 1;
+                    if(page_oldest == "") { page_oldest = m; }
+                    if(page_newest == "")
+                    {
+                        page_newest = m;
+                    }
+                    if(selected.size() >= months_num)
+                    {
+                        done = true;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    // Update oldest/newest for page (records are descending by month)
+    try
+    {
+        if(page_matches > 0)
+        {
+            // Because sort_order=D, first added is newest; last added is oldest in this page subset
+            if(page_newest == "")
+            {
+                page_newest = "?";
+            }
+            if(page_oldest == "")
+            {
+                page_oldest = "?";
+            }
+            if(debug_on)
+            {
+                info "sku diag -> pg=" + pg + ", matches_this_page=" + page_matches + ", cumulative=" + selected.size() + ", newest_seen=" + page_newest + ", oldest_in_scope_maybe=" + page_oldest;
+            }
+        }
+    }
+    catch(pd_ex){}
+    // Early stop if the oldest month on this page is already older than cutoff (further pages will be even older)
+    try
+    {
+        if(page_last_mnum > 0 && page_last_mnum < cutoff_num)
+        {
+            done = true;
+            if(debug_on)
+            {
+                info "early-stop -> pg=" + pg + ", page_last_month=" + page_last_mstr + " (" + page_last_mnum + "), cutoff_num=" + cutoff_num;
+            }
+        }
+    }
+    catch(es_ex){}
+    // If API indicates there are no more pages, stop after processing this page
+    try
+    {
+        if(has_more_flag != null)
+        {
+            hv = ("" + has_more_flag).toLowerCase();
+            if(hv == "false")
+            {
+                done = true;
+            }
+        }
+    }
+    catch(hm_ex){}
+    if (done)
+    {
+        break;
+    }
+    // Remove short-page early break to avoid missing older months on subsequent pages
+    if(listRows == null)
+    {
+        break;
+    }
+} // end paging fallback
+
+// After paging or criteria evaluation
+if(selected.size() == 0)
+{
+    return "No sales found for SKU " + sku + " since " + cutoff_key + ".";
+}
+
+// Currency label
+curr_code = "";
+if(organization != null)
+{
+    curr_code = ifnull(organization.get("currency_code"), "");
+}
+if(curr_code == "")
+{
+    curr_code = "CRC";
+}
+
+// Render HTML
+total_qty = 0.0;
+total_sales = 0.0;
+hdr = "<style>table{border-collapse:collapse} td,th{border:1px solid #ddd;padding:6px} th{background:#f7f7f7}</style>";
+html = hdr + "<div><b>SKU:</b> " + sku + " &nbsp; <b>From:</b> " + cutoff_key + "</div>";
+html = html + "<table><thead><tr><th>Month</th><th>Qty</th><th>Net Sales (" + curr_code + ")</th></tr></thead><tbody>";
+for each rr in selected
+{
+    mm = ifnull(rr.get("cf_month_year"), "");
+    qq = toDecimal(ifnull(rr.get("cf_total_quantity"), "0"));
+    ss = toDecimal(ifnull(rr.get("cf_net_sales"), "0"));
+    total_qty = total_qty + qq;
+    total_sales = total_sales + ss;
+    html = html + "<tr><td>" + mm + "</td><td style='text-align:right'>" + qq + "</td><td style='text-align:right'>" + ss + "</td></tr>";
+}
+html = html + "</tbody><tfoot><tr><th>Total</th><th style='text-align:right'>" + total_qty + "</th><th style='text-align:right'>" + total_sales + "</th></tr></tfoot></table>";
+
+return html;
+}

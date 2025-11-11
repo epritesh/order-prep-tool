@@ -1,0 +1,12 @@
+﻿,,Invoice ID Count,
+614,Closed,614,1. 0 - 30 days
+1432,Closed,1432,2. 31 - 60 days
+1027,Closed,1027,3. 61 - 90 days
+2848,Closed,2848,4. 91 - 180 days
+11416,Closed,11416,5. Above 180 days
+2,Overdue,2,1. 0 - 30 days
+1,Overdue,1,2. 31 - 60 days
+2,Void,2,1. 0 - 30 days
+8,Void,8,2. 31 - 60 days
+1,Void,1,4. 91 - 180 days
+41,Void,41,5. Above 180 days

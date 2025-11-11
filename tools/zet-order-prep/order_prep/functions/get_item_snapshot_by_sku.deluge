@@ -1,89 +1,133 @@
+// Live snapshot: item details + monthly sales + outstanding POs + last purchase price
+// Arguments (configure in Function UI): sku (String), org_id (String)
+// Returns JSON string with keys: item, inventory_value, outstanding_po_qty, last_purchase{price,date,vendor_name}, sales_by_month{YYYY-MM:qty}
 try
 {
-    // 1) Read input: via Function Arguments (add two arguments in UI: sku (String), org_id (String))
     sku_in = ifnull(sku, "").toString().trim();
     org_in = ifnull(org_id, "").toString().trim();
-
     if(sku_in == "" || org_in == "")
     {
-        err = Map();
-        err.put("error","missing sku or org_id");
-        return err.toString();
+        err = Map(); err.put("error","missing sku or org_id"); return err.toString();
     }
+    base_url = "https://books.zoho.com/api/v3"; // adjust domain if region differs
 
-    // 2) Lookup item by exact SKU in Books Items API (adjust domain if not .com)
-    base_url = "https://books.zoho.com/api/v3";
-    items_url = base_url + "/items";
+    // ---------------- 1. Item lookup ----------------
     items_params = Map();
     items_params.put("organization_id", org_in);
     items_params.put("search_text", sku_in);
-    items_params.put("page", "1");
-    items_params.put("per_page", "200");
-
-    items_resp = invokeurl
-    [
-        url       : items_url
-        type      : GET
-        parameters: items_params
-        connection: "booksconnection"
-    ];
-
+    items_params.put("page", "1"); items_params.put("per_page", "200");
+    items_resp = invokeurl [ url: base_url + "/items" type: GET parameters: items_params connection: "booksconnection" ];
     items_list = ifnull(items_resp.get("items"), List());
-    found_item = Map();
-    found = false;
-
+    found_item = Map(); found = false;
     for each it in items_list
     {
-        it_sku = ifnull(it.get("sku"), "").toString();
-        if(it_sku.toLowerCase() == sku_in.toLowerCase())
-        {
-            found_item = it;
-            found = true;
-            break;
-        }
+        it_sku = ifnull(it.get("sku"), "");
+        if(it_sku.toLowerCase() == sku_in.toLowerCase()) { found_item = it; found = true; break; }
     }
-
-    if(found == false)
+    if(!found)
     {
-        nf = Map();
-        nf.put("error","SKU not found");
-        return nf.toString();
+        nf = Map(); nf.put("error","SKU not found"); return nf.toString();
     }
-
-    // 3) Map fields expected by the widget
     out_item = Map();
     out_item.put("item_name", ifnull(found_item.get("name"), ifnull(found_item.get("item_name"), "")));
     out_item.put("sku", ifnull(found_item.get("sku"), ""));
-    out_item.put("supplier_code", ifnull(found_item.get("cf_supplier_code"), ""));
+    out_item.put("supplier_code", ifnull(found_item.get("cf_supplier_code"), ifnull(found_item.get("cf_supplier_code"), "")));
+    available = ifnull(found_item.get("available_stock"), 0); cost = ifnull(found_item.get("average_cost"), ifnull(found_item.get("rate"), 0.0));
+    out_item.put("available", available); out_item.put("cost", cost);
+    inv_value = 0.0; if(available != null && cost != null){ inv_value = available * cost; }
 
-    available = ifnull(found_item.get("available_stock"), 0);
-    cost = ifnull(found_item.get("average_cost"), ifnull(found_item.get("rate"), 0.0));
-    out_item.put("available", available);
-    out_item.put("cost", cost);
-
-    inv_value = 0.0;
-    if(available != null && cost != null)
+    // ---------------- 2. Monthly sales (custom module) ----------------
+    months_num = 24; // last 24 months
+    cutoff_key = zoho.currentdate.addMonth((months_num - 1) * -1).toString("yyyy-MM");
+    cutoff_num = 0; try { cutoff_num = toLong(cutoff_key.replaceAll("-","")); } catch(ignoreCut){}
+    sales_by_month = Map();
+    crit_params = Map();
+    crit_params.put("organization_id", org_in);
+    crit_expr = "(cf_sku == \"" + sku_in + "\") and (cf_month_year >= \"" + cutoff_key + "\")";
+    crit_params.put("criteria", crit_expr);
+    crit_params.put("sort_column", "cf_month_year"); crit_params.put("sort_order", "D");
+    crit_params.put("page", 1); crit_params.put("per_page", months_num);
+    mod_resp = invokeurl [ url: base_url + "/cm_item_monthly_sales" type: GET parameters: crit_params connection: "booksconnection" ];
+    mod_rows = List(); if(mod_resp != null && mod_resp.containsKey("module_records")){ mod_rows = mod_resp.get("module_records"); }
+    for each r in mod_rows
     {
-        inv_value = available * cost;
+        m = ifnull(r.get("cf_month_year"), ""); if(m == ""){ m = ifnull(r.get("Month_Year"), ""); }
+        if(m != "")
+        {
+            mnum = 0; try { mnum = toLong(m.replaceAll("-","")); } catch(ignm){}
+            if(mnum >= cutoff_num)
+            {
+                q = 0; try { q = toDecimal(ifnull(r.get("cf_total_quantity"), ifnull(r.get("Total_Quantity"), "0"))); } catch(ignq){}
+                if(sales_by_month.containsKey(m)) { q = q + toDecimal(sales_by_month.get(m)); }
+                sales_by_month.put(m, q);
+            }
+        }
     }
 
-    // 4) Build response (placeholders for now)
-    last_purchase = Map();
-    sales_by_month = Map();
+    // ---------------- 3. Purchase orders (outstanding + last purchase) ----------------
+    outstanding_qty = 0; last_purchase = Map(); last_purchase.put("price", null); last_purchase.put("date", ""); last_purchase.put("vendor_name", "");
+    po_page = 1; per_page_po = 200; max_pages = 6; // cap to avoid statement blowup
+    last_po_date_num = 0;
+    for each p in {1,2,3,4,5,6}
+    {
+        po_params = Map();
+        po_params.put("organization_id", org_in);
+        po_params.put("page", p); po_params.put("per_page", per_page_po);
+        po_params.put("search_text", sku_in); // broad search; will filter line_items below
+        po_resp = invokeurl [ url: base_url + "/purchaseorders" type: GET parameters: po_params connection: "booksconnection" ];
+        po_list = ifnull(po_resp.get("purchaseorders"), List());
+        if(po_list.size() == 0){ break; }
+        for each po in po_list
+        {
+            status_s = ("" + ifnull(po.get("status"), "")).toLowerCase();
+            is_excluded = status_s.contains("billed") || status_s.contains("closed");
+            po_date_str = "" + ifnull(po.get("date"), ifnull(po.get("created_time"), ""));
+            po_date_num = 0; try { po_date_num = toLong(po_date_str.replaceAll("-","")); } catch(ignpd){}
+            line_items = ifnull(po.get("line_items"), List());
+            for each li in line_items
+            {
+                li_sku = ifnull(li.get("sku"), "");
+                if(li_sku.toLowerCase() == sku_in.toLowerCase())
+                {
+                    qty_ord = 0; qty_rec = 0; rate_val = 0.0;
+                    try { qty_ord = toDecimal(ifnull(li.get("quantity"), ifnull(li.get("quantity_ordered"), "0"))); } catch(ignqo){}
+                    try { qty_rec = toDecimal(ifnull(li.get("quantity_received"), ifnull(li.get("received_quantity"), "0"))); } catch(ignqr){}
+                    try { rate_val = toDecimal(ifnull(li.get("rate"), ifnull(li.get("unit_price"), "0"))); } catch(ignrt){}
+                    out_add = 0; if(qty_ord > qty_rec){ out_add = qty_ord - qty_rec; }
+                    if(!is_excluded && out_add > 0){ outstanding_qty = outstanding_qty + out_add; }
+                    // Last purchase tracking (most recent date)
+                    if(po_date_num > last_po_date_num)
+                    {
+                        last_po_date_num = po_date_num;
+                        last_purchase.put("price", rate_val);
+                        last_purchase.put("date", po_date_str);
+                        last_purchase.put("vendor_name", ifnull(po.get("vendor_name"), ifnull(po.get("vendor_name"), "")));
+                    }
+                }
+            }
+        }
+        // Early stop if page_context says no more pages
+        try
+        {
+            if(po_resp.containsKey("page_context"))
+            {
+                pc = po_resp.get("page_context"); hm = ifnull(pc.get("has_more_page"), "");
+                if(hm != null && ("" + hm).toLowerCase() == "false") { break; }
+            }
+        }
+        catch(ignpc){}
+    }
 
+    // ---------------- 4. Assemble response ----------------
     resp = Map();
     resp.put("item", out_item);
     resp.put("inventory_value", inv_value);
-    resp.put("outstanding_po_qty", 0);
+    resp.put("outstanding_po_qty", outstanding_qty);
     resp.put("last_purchase", last_purchase);
     resp.put("sales_by_month", sales_by_month);
-
     return resp.toString();
 }
-catch (e)
+catch(e)
 {
-    errx = Map();
-    errx.put("error","exception");
-    errx.put("message", e.toString());
-    return errx.toString();
+    errx = Map(); errx.put("error","exception"); errx.put("message", e.toString()); return errx.toString();
 }

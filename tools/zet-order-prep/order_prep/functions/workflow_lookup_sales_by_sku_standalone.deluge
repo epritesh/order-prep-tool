@@ -1,0 +1,229 @@
+// Standalone Custom Function (Item Monthly Sales): Lookup Sales by SKU (no entity_id required)
+// Signature suggestion in Books: void workflow_lookup_sales_by_sku_standalone(Map params, Map organization, Map user)
+
+// Read inputs (params map expected to contain: sku, months [optional])
+sku = "";
+months_num = 24;
+if(params != null)
+{
+    sku = ifnull(params.get("sku"), "");
+    m_in = ifnull(params.get("months"), "");
+    if(m_in != "")
+    {
+        try
+        {
+            m_try = toLong(m_in);
+            if(m_try > 0)
+            {
+                months_num = if(m_try > 36, 36, m_try);
+            }
+        }
+        catch(ignore_m){}
+    }
+}
+sku = sku.trim();
+if(sku == "")
+{
+    info "Missing input 'sku'. Provide params.sku when invoking this standalone function.";
+    return;
+}
+
+// Resolve org id
+org_id_val = "";
+if(organization != null)
+{
+    org_id_val = ifnull(organization.get("organization_id"), "");
+}
+if(org_id_val == "" && user != null)
+{
+    org_id_val = ifnull(user.get("org_id"), "");
+}
+if(org_id_val == "")
+{
+    info "Org id not found in inputs. Using fallback org_id 815317243 (debug).";
+    org_id_val = "815317243";
+}
+
+// Build cutoff YYYYMM numeric
+months_back = (months_num - 1) * -1;
+cutoff_key = zoho.currentdate.addMonth(months_back).toString("yyyy-MM");
+cutoff_num = 0;
+try
+{
+    cutoff_num = toLong(cutoff_key.replaceAll("-", ""));
+}
+catch(ignore2){}
+
+// API root and endpoint
+apiRoot = "";
+if(organization != null)
+{
+    apiRoot = ifnull(organization.get("api_root_endpoint"), "");
+}
+if(apiRoot == "")
+{
+    apiRoot = "https://www.zohoapis.com/books/v3";
+}
+basePath = apiRoot + "/cm_item_monthly_sales";
+
+// Scan pages
+selected = List();
+done = false;
+pg = 1;
+perp = 200;
+info "Standalone lookup -> sku=" + sku + ", org_id=" + org_id_val + ", api=" + basePath;
+
+// Iterate fixed page list
+pages = List();
+for each i in {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30}
+{
+    pages.add(i);
+}
+
+for each pg_in in pages
+{
+    if(done) { break; }
+    pg = pg_in;
+    params_q = Map();
+    params_q.put("organization_id", org_id_val);
+    params_q.put("page", pg);
+    params_q.put("per_page", perp);
+    params_q.put("sort_column", "cf_month_year");
+    params_q.put("sort_order", "D");
+    res = null;
+    try
+    {
+        res = invokeurl [
+            url : basePath
+            type : GET
+            parameters : params_q
+            connection : "booksconnection"
+        ];
+    }
+    catch(invoke_err)
+    {
+        info "InvokeURL failed for 'booksconnection': " + invoke_err;
+        return;
+    }
+    listRows = List();
+    has_more_flag = null;
+    if(res != null)
+    {
+        if(res.containsKey("module_records"))
+        {
+            listRows = res.get("module_records");
+        }
+        if(listRows == null && res.containsKey("records"))
+        {
+            listRows = res.get("records");
+        }
+        if(res.containsKey("page_context"))
+        {
+            pc = res.get("page_context");
+            has_more_flag = ifnull(pc.get("has_more_page"), null);
+        }
+        if(res.containsKey("code"))
+        {
+            cval = "" + res.get("code");
+            if(cval == "57")
+            {
+                info "Authorization error (57). Ensure connection has ZohoBooks.custommodules.READ/.ALL and is bound.";
+                return;
+            }
+        }
+    }
+    if(listRows == null || listRows.size() == 0)
+    {
+        if(pg == 1)
+        {
+            // try legacy once (best-effort)
+            legacyPath = apiRoot + "/custommodules/cm_item_monthly_sales/records";
+            try
+            {
+                legacyRes = invokeurl [
+                    url : legacyPath
+                    type : GET
+                    parameters : params_q
+                    connection : "booksconnection"
+                ];
+                if(legacyRes != null && legacyRes.containsKey("module_records"))
+                {
+                    listRows = legacyRes.get("module_records");
+                }
+            }
+            catch(legacy_err){}
+        }
+        if(listRows == null || listRows.size() == 0)
+        {
+            break;
+        }
+    }
+    for each r in listRows
+    {
+        s = ifnull(r.get("cf_sku"), "").trim();
+        if(s == "") { s = ifnull(r.get("cf_item_sku"), "").trim(); }
+        if(s == "") { s = ifnull(r.get("Item_SKU"), "").trim(); }
+        if(s == sku)
+        {
+            m = ifnull(r.get("cf_month_year"), "");
+            if(m == "") { m = ifnull(r.get("Month_Year"), ""); }
+            if(m != "")
+            {
+                mnum = 0;
+                try { mnum = toLong(m.replaceAll("-", "")); } catch(ix){}
+                if(mnum >= cutoff_num)
+                {
+                    selected.add(r);
+                    if(selected.size() >= months_num)
+                    {
+                        done = true;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    try
+    {
+        if(has_more_flag != null)
+        {
+            hv = ("" + has_more_flag).toLowerCase();
+            if(hv == "false") { done = true; }
+        }
+    }
+    catch(hm){}
+}
+
+if(selected.size() == 0)
+{
+    info "No sales found for SKU " + sku + " since " + cutoff_key + ".";
+    return;
+}
+
+// Currency label
+curr_code = "";
+if(organization != null)
+{
+    curr_code = ifnull(organization.get("currency_code"), "");
+}
+if(curr_code == "") { curr_code = "CRC"; }
+
+// Render HTML
+total_qty = 0.0;
+total_sales = 0.0;
+hdr = "<style>table{border-collapse:collapse} td,th{border:1px solid #ddd;padding:6px} th{background:#f7f7f7}</style>";
+html = hdr + "<div><b>SKU:</b> " + sku + " &nbsp; <b>From:</b> " + cutoff_key + "</div>";
+html = html + "<table><thead><tr><th>Month</th><th>Qty</th><th>Net Sales (" + curr_code + ")</th></tr></thead><tbody>";
+for each rr in selected
+{
+    mm = ifnull(rr.get("cf_month_year"), "");
+    qq = toDecimal(ifnull(rr.get("cf_total_quantity"), "0"));
+    ss = toDecimal(ifnull(rr.get("cf_net_sales"), "0"));
+    total_qty = total_qty + qq;
+    total_sales = total_sales + ss;
+    html = html + "<tr><td>" + mm + "</td><td style='text-align:right'>" + qq + "</td><td style='text-align:right'>" + ss + "</td></tr>";
+}
+html = html + "</tbody><tfoot><tr><th>Total</th><th style='text-align:right'>" + total_qty + "</th><th style='text-align:right'>" + total_sales + "</th></tr></tfoot></table>";
+
+info html;
+return;

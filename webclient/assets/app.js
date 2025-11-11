@@ -35,6 +35,8 @@ const el = {
   pagerLabel: document.getElementById('pagerLabel'),
   exportFilteredBtn: document.getElementById('exportFilteredBtn'),
   exportAllBtn: document.getElementById('exportAllBtn'),
+  skuSearch: document.getElementById('skuSearch'),
+  lookupBtn: document.getElementById('lookupBtn'),
 };
 
 function setStatus(msg) { el.status.textContent = msg; }
@@ -403,6 +405,9 @@ function init() {
     render(); 
     updatePagerButtons(); 
   });
+  // Single SKU lookup
+  if (el.lookupBtn) el.lookupBtn.addEventListener('click', () => lookupSku());
+  if (el.skuSearch) el.skuSearch.addEventListener('keydown', (e) => { if (e.key === 'Enter') lookupSku(); });
   if (el.showCurrentOnly) el.showCurrentOnly.addEventListener('change', () => { state.showCurrentOnly = el.showCurrentOnly.checked; render(); });
   if (el.prevBtn) el.prevBtn.addEventListener('click', () => { if (state.filteredKeys.length) { state.currentIndex = Math.max(0, state.currentIndex - 1); state.selectedKey = state.filteredKeys[state.currentIndex]; render(); updatePagerButtons(); }});
   if (el.nextBtn) el.nextBtn.addEventListener('click', () => { if (state.filteredKeys.length) { state.currentIndex = Math.min(state.filteredKeys.length - 1, state.currentIndex + 1); state.selectedKey = state.filteredKeys[state.currentIndex]; render(); updatePagerButtons(); }});
@@ -570,4 +575,42 @@ function renderSummary() {
     <polyline fill="none" stroke="#3f51b5" stroke-width="2" points="${points}" />
     <line x1="0" y1="${H-1}" x2="${W}" y2="${H-1}" stroke="#eee" />
   `;
+}
+
+// --- single SKU lookup ---
+function lookupSku(){
+  const raw = (el.skuSearch?.value || '').trim();
+  if (!raw) { showToast('Enter a SKU to look up', 'err'); return; }
+  const target = raw.toLowerCase();
+  const entries = Array.from(state.byItem.entries());
+  const hit = entries.find(([k, v]) => String(v.sku||'').trim().toLowerCase() === target);
+  if (!hit) {
+    showToast(`SKU not found: ${raw}`, 'err');
+    return;
+  }
+  const [key, row] = hit;
+  // Apply a focused filter and show only the current row
+  state.skuFilterSet = new Set([row.sku]);
+  state.skuFilterPatterns = null;
+  state.currentIndex = 0;
+  state.selectedKey = key;
+  state.showCurrentOnly = true;
+  if (el.showCurrentOnly) el.showCurrentOnly.checked = true;
+  // Reflect in the multi-SKU textarea for transparency
+  if (el.skuList) el.skuList.value = row.sku;
+  render();
+  updatePagerButtons();
+  showToast(`Showing results for SKU ${row.sku}`,'ok');
+}
+
+// --- toasts ---
+function showToast(message, type='ok'){
+  const host = document.getElementById('toast');
+  if (!host) return;
+  const div = document.createElement('div');
+  div.className = `toast ${type==='err'?'err':'ok'}`;
+  div.textContent = message;
+  host.appendChild(div);
+  // Remove after animation (~3s)
+  setTimeout(() => { div.remove(); }, 3200);
 }

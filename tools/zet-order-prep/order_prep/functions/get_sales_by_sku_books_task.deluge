@@ -1,0 +1,111 @@
+// Books Custom Function: Get_Sales_By_SKU_Using_BooksTask
+// Reads last 24 months from a Custom Module via the Deluge integration task zoho.books.getRecords
+// Inputs (add these as arguments in UI):
+//   sku (string, optional)
+//   item_id (string, optional)
+//   org_id (string, required)
+//   module_api_name (string, optional) -> e.g., "cm_item_monthly_sales" (defaults to this)
+// Connection required: OAuth connection named "booksconnection" with Zoho Books scopes
+
+resp = Map();
+try
+{
+	sku = ifnull(sku,"");
+	item_id = ifnull(item_id,"");
+	org_id = ifnull(org_id,"");
+	module_api_name = ifnull(module_api_name,"cm_item_monthly_sales");
+	if(org_id == "")
+	{
+		throw "org_id is required";
+	}
+	if(sku == "" && item_id == "")
+	{
+		throw "Provide either sku or item_id";
+	}
+
+	cutoff_key = zoho.currentdate.addMonth(-23).toString("yyyy-MM");
+	crit = if(sku != "","(cf_sku==\"" + sku + "\")","(cf_item_id==\"" + item_id + "\")");
+	crit = crit + " and (cf_month_year>==\"" + cutoff_key + "\")"; // >=
+
+	params = Map();
+	params.put("criteria", crit);
+	params.put("sort_column", "cf_month_year");
+	params.put("sort_order", "d");
+	params.put("per_page", "24");
+	params.put("page", "1");
+	params.put("select_fields","cf_month_year,cf_total_quantity,cf_net_sales,cf_currency,cf_item_id,cf_sku,cf_item_name");
+
+	// Some environments expect signature: (module, org_id, params, connection)
+	// others accept (org_id, module, params, connection). Try primary then fallback.
+	booksRes = null;
+	try
+	{
+		booksRes = zoho.books.getRecords(module_api_name, org_id, params, "booksconnection");
+	}
+	catch(ex1)
+	{
+		booksRes = zoho.books.getRecords(org_id, module_api_name, params, "booksconnection");
+	}
+
+	rows = List();
+	if(booksRes != null)
+	{
+		if(booksRes.containKey(module_api_name))
+		{
+			rows = booksRes.get(module_api_name);
+		}
+		else if(booksRes.containKey("data"))
+		{
+			rows = booksRes.get("data");
+		}
+	}
+
+	// Normalize and return newest-first, max 24
+	result = List();
+	for each r in rows
+	{
+		m = {
+			"month_year": r.get("cf_month_year"),
+			"total_quantity": r.get("cf_total_quantity"),
+			"net_sales": r.get("cf_net_sales"),
+			"currency": r.get("cf_currency"),
+			"item_id": r.get("cf_item_id"),
+			"sku": r.get("cf_sku"),
+			"item_name": r.get("cf_item_name")
+		};
+		result.add(m);
+	}
+	result.sort((a,b) -> if(a.get("month_year") > b.get("month_year")) -1 else if(a.get("month_year") < b.get("month_year")) 1 else 0);
+	if(result.size() > 24)
+	{
+		result = result.subList(0,24);
+	}
+
+	// Totals
+	qsum = 0.0; ssum = 0.0;
+	for each r in result
+	{
+		qsum = qsum + toDecimal(ifnull(r.get("total_quantity"),"0"));
+		ssum = ssum + toDecimal(ifnull(r.get("net_sales"),"0"));
+	}
+	meta = Map();
+	if(result.size() > 0)
+	{
+		meta.put("sku", result.get(0).get("sku"));
+		meta.put("item_id", result.get(0).get("item_id"));
+		meta.put("item_name", result.get(0).get("item_name"));
+	}
+
+	resp.put("status","ok");
+	resp.put("cutoff_from", cutoff_key);
+	resp.put("months", result);
+	resp.put("total_quantity", qsum);
+	resp.put("total_net_sales", ssum);
+	resp.put("meta", meta);
+}
+catch(e)
+{
+	resp = {"status":"error","message":e.toString()};
+}
+
+return resp.toString();

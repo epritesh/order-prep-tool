@@ -1,0 +1,637 @@
+// Workflow Custom Function (Item Monthly Sales): Lookup Sales by SKU
+// Signature (Books): void <name>(Map cm_item_monthly_sales, Map organization, Map user)
+// Inputs available:
+//   - cm_item_monthly_sales: current record on Item Monthly Sales module
+//       expects fields: cf_sku (string), optional cf_months (number 1..36)
+//   - organization: map with organization_id and currency_code
+
+// Resolve org id
+org_id_val = "";
+if(organization != null)
+{
+	org_id_val = ifnull(organization.get("organization_id"), "");
+}
+if(org_id_val == "" && user != null)
+{
+	org_id_val = ifnull(user.get("org_id"), "");
+}
+if(org_id_val == "")
+{
+	info "Cannot determine org id. Provide organization.organization_id or user.org_id.";
+	return;
+}
+
+// Read SKU from the context record
+sku = "";
+if(cm_item_monthly_sales != null)
+{
+	sku = ifnull(cm_item_monthly_sales.get("cf_sku"), "");
+}
+sku = sku.trim();
+if(sku == "")
+{
+	info "Missing SKU on record (cf_sku).";
+	return;
+}
+
+// Months window
+months_num = 24;
+try
+{
+	m_in = ifnull(cm_item_monthly_sales.get("cf_months"), "");
+	if(m_in != "")
+	{
+		m_try = toLong(m_in);
+		if(m_try > 0)
+		{
+			months_num = if(m_try > 36, 36, m_try);
+		}
+	}
+}
+catch (ignore)
+{
+}
+months_back = (months_num - 1) * -1;
+cutoff_key = zoho.currentdate.addMonth(months_back).toString("yyyy-MM");
+// Numeric cutoff for safe comparisons (YYYYMM as number)
+cutoff_num = 0;
+try
+{
+	cutoff_num = toLong(cutoff_key.replaceAll("-", ""));
+}
+catch (ignore2)
+{
+}
+
+// Currency label
+curr_code = "";
+if(organization != null)
+{
+	curr_code = ifnull(organization.get("currency_code"), "");
+}
+if(curr_code == "")
+{
+	curr_code = "CRC";
+}
+
+// Simplified: single canonical endpoint, exact SKU match; union default + draft
+criteria = "(cf_sku=='" + sku + "')";
+apiRoot = "";
+if(organization != null)
+{
+	apiRoot = ifnull(organization.get("api_root_endpoint"), "");
+}
+if(apiRoot == "")
+{
+	apiRoot = "https://www.zohoapis.com/books/v3";
+}
+baseUrl = apiRoot + "/custommodules/cm_item_monthly_sales/records";
+
+paramsBase = Map();
+paramsBase.put("organization_id", org_id_val);
+paramsBase.put("page", 1);
+paramsBase.put("per_page", 200);
+paramsBase.put("sort_column", "cf_month_year");
+paramsBase.put("sort_order", "d");
+paramsBase.put("criteria", criteria);
+
+// Note: pagination probe temporarily disabled to resolve syntax error in Books editor.
+// Uncomment and iterate carefully if page counts are needed during debugging.
+
+rows = List();
+rowsAll = List();
+seen = Map();
+
+// Seed with the current record to avoid empty results when API filtering is ignored
+rec_id_curr = ifnull(cm_item_monthly_sales.get("module_record_id"), "");
+if(rec_id_curr == "")
+{
+	rec_id_curr = ifnull(cm_item_monthly_sales.get("id"), "");
+}
+if(rec_id_curr != "")
+{
+	if(!seen.containsKey(rec_id_curr))
+	{
+		rowsAll.add(cm_item_monthly_sales);
+		seen.put(rec_id_curr, true);
+	}
+}
+
+// Pass A: default (approved or all, depending on org settings)
+resA = invokeurl
+[
+	url : baseUrl
+	type : GET
+	parameters : paramsBase
+	connection : "booksconnection"
+];
+listA = List();
+if(resA != null)
+{
+	if(resA.containsKey("records"))
+	{
+		listA = resA.get("records");
+	}
+	else if(resA.containsKey("data"))
+	{
+		listA = resA.get("data");
+	}
+	else if(resA.containsKey("module_record"))
+	{
+		listA = resA.get("module_record");
+	}
+	else if(resA.containsKey("cm_item_monthly_sales"))
+	{
+		listA = resA.get("cm_item_monthly_sales");
+	}
+}
+for each a in listA
+{
+	ida = ifnull(a.get("module_record_id"), "");
+	if(ida == "")
+	{
+		ida = ifnull(a.get("cf_key"), "");
+	}
+	if(ida != "" && !seen.containsKey(ida))
+	{
+		rowsAll.add(a);
+		seen.put(ida, true);
+	}
+}
+
+// Pass B: include draft
+paramsDraft = Map();
+paramsDraft.put("organization_id", org_id_val);
+paramsDraft.put("page", 1);
+paramsDraft.put("per_page", 200);
+paramsDraft.put("sort_column", "cf_month_year");
+paramsDraft.put("sort_order", "d");
+paramsDraft.put("criteria", criteria);
+paramsDraft.put("status", "draft");
+resB = invokeurl
+[
+	url : baseUrl
+	type : GET
+	parameters : paramsDraft
+	connection : "booksconnection"
+];
+listB = List();
+if(resB != null)
+{
+	if(resB.containsKey("records"))
+	{
+		listB = resB.get("records");
+	}
+	else if(resB.containsKey("data"))
+	{
+		listB = resB.get("data");
+	}
+	else if(resB.containsKey("module_record"))
+	{
+		listB = resB.get("module_record");
+	}
+	else if(resB.containsKey("cm_item_monthly_sales"))
+	{
+		listB = resB.get("cm_item_monthly_sales");
+	}
+}
+for each b in listB
+{
+	idb = ifnull(b.get("module_record_id"), "");
+	if(idb == "")
+	{
+		idb = ifnull(b.get("cf_key"), "");
+	}
+	if(idb != "" && !seen.containsKey(idb))
+	{
+		rowsAll.add(b);
+		seen.put(idb, true);
+	}
+}
+
+rows = rowsAll;
+
+// If still nothing, try alternate criteria and sample probes
+if(rows == null || rows.size() == 0)
+{
+	// Fallback: Use Books Custom Modules OpenAPI style endpoint "/{module_name}".
+	// Many orgs expose the module at "/cm_item_monthly_sales" rather than the legacy "/custommodules/.../records".
+	baseUrlAlt = apiRoot + "/cm_item_monthly_sales";
+
+	// Build params without criteria for OpenAPI endpoint
+	paramsBaseNoCrit = Map();
+	paramsBaseNoCrit.put("organization_id", org_id_val);
+	paramsBaseNoCrit.put("page", 1);
+	paramsBaseNoCrit.put("per_page", 200);
+	paramsBaseNoCrit.put("sort_column", "cf_month_year");
+	paramsBaseNoCrit.put("sort_order", "d");
+
+	resAltA = invokeurl
+	[
+		url : baseUrlAlt
+		type : GET
+		parameters : paramsBaseNoCrit
+		connection : "booksconnection"
+	];
+	listAltA = List();
+	if(resAltA != null)
+	{
+		if(resAltA.containsKey("module_record"))
+		{
+			listAltA = resAltA.get("module_record");
+		}
+		else if(resAltA.containsKey("records"))
+		{
+			listAltA = resAltA.get("records");
+		}
+		else if(resAltA.containsKey("data"))
+		{
+			listAltA = resAltA.get("data");
+		}
+		else if(resAltA.containsKey("cm_item_monthly_sales"))
+		{
+			listAltA = resAltA.get("cm_item_monthly_sales");
+		}
+	}
+	for each ra in listAltA
+	{
+		ida2 = ifnull(ra.get("module_record_id"), "");
+		if(ida2 == "")
+		{
+			ida2 = ifnull(ra.get("cf_key"), "");
+		}
+		if(ida2 != "" && !seen.containsKey(ida2))
+		{
+			rowsAll.add(ra);
+			seen.put(ida2, true);
+		}
+	}
+
+	// Optional: include drafts via the same endpoint if supported by org
+	if(rowsAll.size() == 0)
+	{
+		// Draft view using filter_by for OpenAPI endpoint
+		paramsAltDraft1 = Map();
+		paramsAltDraft1.put("organization_id", org_id_val);
+		paramsAltDraft1.put("page", 1);
+		paramsAltDraft1.put("per_page", 200);
+		paramsAltDraft1.put("sort_column", "cf_month_year");
+		paramsAltDraft1.put("sort_order", "d");
+		paramsAltDraft1.put("filter_by", "Status.Draft");
+
+		resAltB = invokeurl
+		[
+			url : baseUrlAlt
+			type : GET
+			parameters : paramsAltDraft1
+			connection : "booksconnection"
+		];
+		listAltB = List();
+		if(resAltB != null)
+		{
+			if(resAltB.containsKey("module_record"))
+			{
+				listAltB = resAltB.get("module_record");
+			}
+			else if(resAltB.containsKey("records"))
+			{
+				listAltB = resAltB.get("records");
+			}
+			else if(resAltB.containsKey("data"))
+			{
+				listAltB = resAltB.get("data");
+			}
+			else if(resAltB.containsKey("cm_item_monthly_sales"))
+			{
+				listAltB = resAltB.get("cm_item_monthly_sales");
+			}
+		}
+		for each rb2 in listAltB
+		{
+			idb2 = ifnull(rb2.get("module_record_id"), "");
+			if(idb2 == "")
+			{
+				idb2 = ifnull(rb2.get("cf_key"), "");
+			}
+			if(idb2 != "" && !seen.containsKey(idb2))
+			{
+				rowsAll.add(rb2);
+				seen.put(idb2, true);
+			}
+		}
+	}
+
+	rows = rowsAll;
+}
+
+// If still nothing after both endpoint styles
+if(rows == null || rows.size() == 0)
+{
+		// Try fetching the individual record by ID to validate endpoint and include at least one row
+		if(rec_id_curr != "")
+		{
+			baseUrlById = apiRoot + "/cm_item_monthly_sales/" + rec_id_curr;
+			paramsById = Map();
+			paramsById.put("organization_id", org_id_val);
+			resById = invokeurl
+			[
+				url : baseUrlById
+				type : GET
+				parameters : paramsById
+				connection : "booksconnection"
+			];
+			if(resById != null && resById.containsKey("module_record"))
+			{
+				recObj = resById.get("module_record");
+				if(recObj != null)
+				{
+					id_one = ifnull(recObj.get("module_record_id"), rec_id_curr);
+					if(!seen.containsKey(id_one))
+					{
+						rowsAll.add(recObj);
+						seen.put(id_one, true);
+					}
+				}
+			}
+		}
+
+	// Second fallback: some orgs expose module path without the "cm_" prefix (e.g., /item_monthly_sales)
+	baseUrlAlt2 = apiRoot + "/item_monthly_sales";
+	paramsAltBase = Map();
+	paramsAltBase.put("organization_id", org_id_val);
+	paramsAltBase.put("page", 1);
+	paramsAltBase.put("per_page", 200);
+	paramsAltBase.put("sort_column", "cf_month_year");
+	paramsAltBase.put("sort_order", "d");
+	// Avoid passing criteria here; many Custom Modules ignore it
+
+	resAlt2A = invokeurl
+	[
+		url : baseUrlAlt2
+		type : GET
+		parameters : paramsAltBase
+		connection : "booksconnection"
+	];
+	listAlt2A = List();
+	if(resAlt2A != null)
+	{
+		if(resAlt2A.containsKey("module_record"))
+		{
+			listAlt2A = resAlt2A.get("module_record");
+		}
+		else if(resAlt2A.containsKey("records"))
+		{
+			listAlt2A = resAlt2A.get("records");
+		}
+		else if(resAlt2A.containsKey("data"))
+		{
+			listAlt2A = resAlt2A.get("data");
+		}
+	}
+	for each r2a in listAlt2A
+	{
+		id2a = ifnull(r2a.get("module_record_id"), "");
+		if(id2a == "")
+		{
+			id2a = ifnull(r2a.get("cf_key"), "");
+		}
+		if(id2a != "" && !seen.containsKey(id2a))
+		{
+			rowsAll.add(r2a);
+			seen.put(id2a, true);
+		}
+	}
+
+	if(rowsAll.size() == 0)
+	{
+		// Optional Draft filter param; not officially documented, but supported in many modules
+		// Deluge doesn't support Map.clone(); build a fresh map with same base params
+		paramsAltDraft2 = Map();
+		paramsAltDraft2.put("organization_id", org_id_val);
+		paramsAltDraft2.put("page", 1);
+		paramsAltDraft2.put("per_page", 200);
+		paramsAltDraft2.put("sort_column", "cf_month_year");
+		paramsAltDraft2.put("sort_order", "d");
+		paramsAltDraft2.put("filter_by", "Status.Draft");
+		resAlt2B = invokeurl
+		[
+			url : baseUrlAlt2
+			type : GET
+			parameters : paramsAltDraft2
+			connection : "booksconnection"
+		];
+		listAlt2B = List();
+		if(resAlt2B != null)
+		{
+			if(resAlt2B.containsKey("module_record"))
+			{
+				listAlt2B = resAlt2B.get("module_record");
+			}
+			else if(resAlt2B.containsKey("records"))
+			{
+				listAlt2B = resAlt2B.get("records");
+			}
+			else if(resAlt2B.containsKey("data"))
+			{
+				listAlt2B = resAlt2B.get("data");
+			}
+		}
+		for each r2b in listAlt2B
+		{
+			id2b = ifnull(r2b.get("module_record_id"), "");
+			if(id2b == "")
+			{
+				id2b = ifnull(r2b.get("cf_key"), "");
+			}
+			if(id2b != "" && !seen.containsKey(id2b))
+			{
+				rowsAll.add(r2b);
+				seen.put(id2b, true);
+			}
+		}
+	}
+
+	rows = rowsAll;
+}
+
+// Third fallback: legacy custommodules path without "cm_" prefix
+if(rows == null || rows.size() == 0)
+{
+	baseUrlAlt3 = apiRoot + "/custommodules/item_monthly_sales/records";
+	resAlt3 = invokeurl
+	[
+		url : baseUrlAlt3
+		type : GET
+		parameters : paramsBase
+		connection : "booksconnection"
+	];
+	listAlt3 = List();
+	if(resAlt3 != null)
+	{
+		if(resAlt3.containsKey("module_record"))
+		{
+			listAlt3 = resAlt3.get("module_record");
+		}
+		else if(resAlt3.containsKey("records"))
+		{
+			listAlt3 = resAlt3.get("records");
+		}
+		else if(resAlt3.containsKey("data"))
+		{
+			listAlt3 = resAlt3.get("data");
+		}
+	}
+	for each r3 in listAlt3
+	{
+		id3 = ifnull(r3.get("module_record_id"), "");
+		if(id3 == "")
+		{
+			id3 = ifnull(r3.get("cf_key"), "");
+		}
+		if(id3 != "" && !seen.containsKey(id3))
+		{
+			rowsAll.add(r3);
+			seen.put(id3, true);
+		}
+	}
+	rows = rowsAll;
+}
+
+// If still nothing after all endpoint styles
+if(rows == null || rows.size() == 0)
+{
+	// Final attempt: paged scan (no criteria) and client-side filter by cf_sku across common endpoints
+	candidates = List();
+	candidates.add(apiRoot + "/cm_item_monthly_sales");
+	candidates.add(apiRoot + "/item_monthly_sales");
+	for each pathx in candidates
+	{
+		pg = 1;
+		cap_pages_scan = 100; // safety cap
+		while(pg <= cap_pages_scan)
+		{
+			paramsScan = Map();
+			paramsScan.put("organization_id", org_id_val);
+			paramsScan.put("page", pg);
+			paramsScan.put("per_page", 200);
+			paramsScan.put("sort_column", "cf_month_year");
+			paramsScan.put("sort_order", "d");
+			resScan = invokeurl
+			[
+				url : pathx
+				type : GET
+				parameters : paramsScan
+				connection : "booksconnection"
+			];
+			listScan = List();
+			if(resScan != null)
+			{
+				if(resScan.containsKey("module_record"))
+				{
+					listScan = resScan.get("module_record");
+				}
+				if(resScan.containsKey("records"))
+				{
+					listScan = resScan.get("records");
+				}
+				if(resScan.containsKey("data"))
+				{
+					listScan = resScan.get("data");
+				}
+			}
+			for each rx in listScan
+			{
+				sku_rec = ifnull(rx.get("cf_sku"), "");
+				sku_rec = sku_rec.trim();
+				if(sku_rec == sku)
+				{
+					idx = ifnull(rx.get("module_record_id"), "");
+					if(idx == "")
+					{
+						idx = ifnull(rx.get("cf_key"), "");
+					}
+					if(idx != "" && !seen.containsKey(idx))
+					{
+						rowsAll.add(rx);
+						seen.put(idx, true);
+					}
+				}
+			}
+			// paging termination: last page when fewer than per_page records
+			if(listScan == null || listScan.size() == 0)
+			{
+				break;
+			}
+			if(listScan.size() < 200)
+			{
+				break;
+			}
+			pg = pg + 1;
+		}
+	}
+	rows = rowsAll;
+	if(rows == null || rows.size() == 0)
+	{
+		info "No sales rows for SKU " + sku + ". Tried endpoints: " + baseUrl + ", " + baseUrlAlt + ", " + baseUrlAlt2 + ", " + baseUrlAlt3 + " and paged scan on common endpoints. API root: " + apiRoot + "; org_id: " + org_id_val + ".";
+		return;
+	}
+}
+
+// Filter last N months on client side
+selected = List();
+for each r_all in rows
+{
+	// Ensure we only include rows for the requested SKU (server-side criteria can be ignored on some orgs)
+	sku_all = ifnull(r_all.get("cf_sku"), "");
+	sku_all = sku_all.trim();
+	// Only process matching SKU to avoid empty blocks that can trip the parser
+	if(sku_all == sku) {
+		m_all = ifnull(r_all.get("cf_month_year"), "");
+		if(m_all != "")
+		{
+			// Compare numerically as YYYYMM to avoid string comparison errors
+			m_num_val = 0;
+			try
+			{
+				m_num_str = m_all.replaceAll("-", "");
+				m_num_val = toLong(m_num_str);
+			}
+			catch (ignore3)
+			{
+			}
+			if(m_num_val >= cutoff_num)
+			{
+				selected.add(r_all);
+				if(selected.size() >= months_num)
+				{
+					break;
+				}
+			}
+		}
+	}
+}
+if(selected == null || selected.size() == 0)
+{
+	info "No sales found for SKU " + sku + " since " + cutoff_key + ". Retrieved " + rows.size() + " rows for this SKU.";
+	return;
+}
+
+// Render HTML table
+total_qty = 0.0;
+total_sales = 0.0;
+hdr = "<style>table{border-collapse:collapse} td,th{border:1px solid #ddd;padding:6px} th{background:#f7f7f7}</style>";
+html = hdr + "<div><b>SKU:</b> " + sku + " &nbsp; <b>From:</b> " + cutoff_key + "</div>";
+html = html + "<table><thead><tr><th>Month</th><th>Qty</th><th>Net Sales (" + curr_code + ")</th></tr></thead><tbody>";
+for each r in selected
+{
+	m = ifnull(r.get("cf_month_year"), "");
+	q = toDecimal(ifnull(r.get("cf_total_quantity"), "0"));
+	s = toDecimal(ifnull(r.get("cf_net_sales"), "0"));
+	total_qty = total_qty + q;
+	total_sales = total_sales + s;
+	html = html + "<tr><td>" + m + "</td><td style='text-align:right'>" + q + "</td><td style='text-align:right'>" + s + "</td></tr>";
+}
+html = html + "</tbody><tfoot><tr><th>Total</th><th style='text-align:right'>" + total_qty + "</th><th style='text-align:right'>" + total_sales + "</th></tr></tfoot></table>";
+
+info html;
+return;

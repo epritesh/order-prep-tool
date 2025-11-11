@@ -1,0 +1,32 @@
+[
+  {
+    "name": "qt_sales_24m",
+    "sql": "SELECT li.SKU, COALESCE(li.\"Product ID\", li.\"Item_ID\") AS Product_ID, date_format(inv.\"Invoice Date\", '%Y-%m') AS Month_Year, SUM(li.Quantity) AS Total_Quantity, SUM(li.Quantity * li.Rate) AS Net_Sales FROM \"Invoice Line Items\" li JOIN \"Invoices\" inv ON inv.\"Invoice ID\" = li.\"Invoice ID\" WHERE inv.\"Invoice Date\" >= dateadd('month', -24, currentdate()) GROUP BY li.SKU, Product_ID, Month_Year;",
+    "refresh": { "frequency": "DAILY", "time": "06:00" },
+    "dependsOn": []
+  },
+  {
+    "name": "qt_outstanding_po",
+    "sql": "SELECT pli.SKU, COALESCE(pli.\"Product ID\", pli.\"Item_ID\") AS Product_ID, SUM(GREATEST(pli.QuantityOrdered - pli.QuantityReceived, 0)) AS Outstanding_Qty FROM \"Purchase Order Line Items\" pli JOIN \"Purchase Orders\" po ON po.\"Purchase Order ID\" = pli.\"Purchase Order ID\" WHERE po.\"Purchase Order Status\" NOT IN ('Billed','Closed') GROUP BY pli.SKU, Product_ID;",
+    "refresh": { "frequency": "DAILY", "time": "06:05" },
+    "dependsOn": []
+  },
+  {
+    "name": "qt_last_purchase",
+    "sql": "SELECT SKU, Product_ID, \"Purchase Order Date\" AS Last_Purchase_Date, Item_Price AS Last_Purchase_Price, Vendor_Name FROM ( SELECT pli.SKU, COALESCE(pli.\"Product ID\", pli.\"Item_ID\") AS Product_ID, po.\"Purchase Order Date\", pli.\"Item Price\" AS Item_Price, po.\"Vendor Name\" AS Vendor_Name, ROW_NUMBER() OVER (PARTITION BY pli.SKU ORDER BY po.\"Purchase Order Date\" DESC) AS rn FROM \"Purchase Order Line Items\" pli JOIN \"Purchase Orders\" po ON po.\"Purchase Order ID\" = pli.\"Purchase Order ID\" ) t WHERE rn = 1;",
+    "refresh": { "frequency": "DAILY", "time": "06:10" },
+    "dependsOn": []
+  },
+  {
+    "name": "qt_avg_demand_6m",
+    "sql": "SELECT SKU, Product_ID, SUM(Total_Quantity) / 6.0 AS AvgMonthlyQty_6m FROM qt_sales_24m WHERE Month_Year >= date_format(dateadd('month', -6, currentdate()), '%Y-%m') GROUP BY SKU, Product_ID;",
+    "refresh": { "frequency": "DAILY", "time": "06:15" },
+    "dependsOn": ["qt_sales_24m"]
+  },
+  {
+    "name": "qt_item_snapshot",
+    "sql": "SELECT i.SKU, COALESCE(i.\"Product ID\", i.\"Item_ID\") AS Product_ID, i.Item_Name, i.Available_Stock, i.Cost, (i.Available_Stock * i.Cost) AS Inventory_Value, COALESCE(o.Outstanding_Qty, 0) AS Outstanding_Qty, lp.Last_Purchase_Price, lp.Last_Purchase_Date, lp.Vendor_Name, ad.AvgMonthlyQty_6m FROM \"Items\" i LEFT JOIN qt_outstanding_po o ON o.SKU = i.SKU AND o.Product_ID = COALESCE(i.\"Product ID\", i.\"Item_ID\") LEFT JOIN qt_last_purchase lp ON lp.SKU = i.SKU AND lp.Product_ID = COALESCE(i.\"Product ID\", i.\"Item_ID\") LEFT JOIN qt_avg_demand_6m ad ON ad.SKU = i.SKU AND ad.Product_ID = COALESCE(i.\"Product ID\", i.\"Item_ID\");",
+    "refresh": { "frequency": "DAILY", "time": "06:20" },
+    "dependsOn": ["qt_outstanding_po", "qt_last_purchase", "qt_avg_demand_6m"]
+  }
+]
