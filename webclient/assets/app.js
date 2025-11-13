@@ -70,28 +70,40 @@ async function fetchTextMaybe(paths) {
   for (const p of paths) {
     try {
       const res = await fetch(p);
-      if (res.ok) return await res.text();
-    } catch {}
+      if (res.ok) {
+        state._csvSourceLast = p; // remember successful source path
+        return await res.text();
+      }
+    } catch (e) {
+      // swallow; continue
+    }
   }
+  state._csvSourceLast = null;
   return null;
 }
 
 async function loadCsv(filename) {
   const base = state.dataBasePath;
   // Fixed path; attempt multiple fallbacks including repository root /data folder
-  const txt = await fetchTextMaybe([
-    `${base}${filename}`,              // webclient/data/filename
-    `/webclient/${base}${filename}`,   // absolute path variant (in some static setups)
-    `/data/${filename}`,               // repository root data folder
+  const candidatePaths = [
+    `${base}${filename}`,              // webclient/data/filename (relative)
+    `/webclient/${base}${filename}`,   // explicit /webclient prefix (some hosts preserve repo structure)
+    `/data/${filename}`,               // root data folder
     `/${filename}`                     // plain root fallback
-  ]);
+  ];
+  const txt = await fetchTextMaybe(candidatePaths);
   if (!txt) return [];
   return new Promise((resolve) => {
     Papa.parse(txt, {
       header: true,
       skipEmptyLines: true,
       transformHeader: (h) => h.trim(),
-      complete: (res) => resolve(res.data)
+      complete: (res) => {
+        // Track source path for debugging (first successful path from candidate list)
+        if (!state._csvSources) state._csvSources = {};
+        state._csvSources[filename] = state._csvSourceLast || candidatePaths[0];
+        resolve(res.data);
+      }
     });
   });
 }
@@ -445,11 +457,11 @@ async function tryLoadInvoiceSupplement() {
   const attemptLog = [];
   for (const name of primaryNames) {
     const rows = await loadCsv(name);
-    attemptLog.push({ name, rows: rows.length });
+    attemptLog.push({ name, rows: rows.length, source: state._csvSources?.[name] || null });
     if (rows && rows.length) { primary = rows; break; }
   }
   const fallback = await loadCsv(fallbackName);
-  attemptLog.push({ name: fallbackName, rows: fallback.length });
+  attemptLog.push({ name: fallbackName, rows: fallback.length, source: state._csvSources?.[fallbackName] || null });
   console.log('[Pantera] Invoice supplement load attempts:', attemptLog);
   if (!primary.length && !fallback.length) return [];
 
@@ -531,10 +543,17 @@ function integrateInvoiceSupplement(rows) {
   }
   if (!injected) {
     console.warn('[Pantera] Invoice integration produced ZERO injected rows', { currentMonth, total, skippedMonth, skippedZeroQty });
+    // Extra diagnostic: sample first 3 rows (sanitized) to inspect header keys if present
+    console.log('[Pantera] Invoice sample rows (first 3):', rows.slice(0,3).map(r => Object.keys(r)));
   } else {
     console.log('[Pantera] Integrated invoice rows for current month:', injected, 'Target month:', currentMonth, 'Total source rows:', total, 'Skipped(other month):', skippedMonth, 'Skipped(qty<=0):', skippedZeroQty);
   }
 }
+
+// Global diagnostic helper to inspect CSV source resolution
+window.debugCsvSources = function(){
+  console.log('[Pantera][debugCsvSources] Sources used per filename:', state._csvSources);
+};
 
 // Debug helper: log raw sales rows contributing to current month for a given SKU
 window.debugSku = function(sku){
