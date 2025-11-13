@@ -13,3 +13,5 @@ data/DIAG/
 # !data/SalesHistory_Updated_*.csv
 # !data/Purchase_Order.csv
 # !data/Items.csv
+!data/ALL_INVOICES_NOV_TO_DATE.csv
+!data/Invoices_nov_to_date.csv
