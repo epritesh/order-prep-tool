@@ -135,10 +135,15 @@ function parseDate(s) {
   return isNaN(d) ? null : d;
 }
 function makeKey(r) {
-  const sku = H.sku(r);
-  const id = H.itemId(r);
+  const rawSku = H.sku(r);
+  const rawId = H.itemId(r);
+  const sku = rawSku !== undefined && rawSku !== null ? String(rawSku).trim() : '';
+  const id = rawId !== undefined && rawId !== null ? String(rawId).trim() : '';
   if (sku && id) return `${sku}__${id}`;
-  return sku || id || H.itemName(r) || JSON.stringify(r).slice(0,64);
+  if (sku) return sku;
+  if (id) return id;
+  const nm = H.itemName(r);
+  return (nm ? String(nm).trim() : '') || JSON.stringify(r).slice(0,64);
 }
 
 function aggregate() {
