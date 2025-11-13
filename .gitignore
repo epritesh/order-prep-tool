@@ -1,4 +1,6 @@
 data/
+# Unignore root data directory to allow selective whitelisting of specific files
+!data/
 # Purge and ignore bulk analytics export directories & large workspace tables
 data/Zoho_Finance_Analytics_EXPORT/
 data/Zoho_Finance_Analytics_partial_export_*/
