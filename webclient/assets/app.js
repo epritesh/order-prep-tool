@@ -290,7 +290,10 @@ function render() {
     // Render sales columns with most recent on the left
     for (const m of monthsDisplay) {
       const v = r.salesByMonth[m] || 0;
-      cells.push(`<td class="num">${v ? v.toLocaleString() : ''}</td>`);
+      // Always show 0 explicitly for clarity; highlight current month when >0
+      const isCurrentMonth = (m === monthsDisplay[0]);
+      const cls = `num${isCurrentMonth && v>0 ? ' current-positive' : ''}`;
+      cells.push(`<td class="${cls}" data-month="${m}">${(v||0).toLocaleString()}</td>`);
     }
     const k = makeKey(r);
     const isCurrent = (state.showCurrentOnly && state.filteredKeys[state.currentIndex] === k) || (!state.showCurrentOnly && state.selectedKey === k);

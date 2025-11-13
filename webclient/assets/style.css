@@ -86,3 +86,7 @@ body { margin: 0; padding: 16px; font-family: Inter, system-ui, -apple-system, S
   .summary .cards{ grid-template-columns: 1fr 1fr; }
   .sku-controls{ grid-template-columns: 1fr; justify-content: stretch; }
 }
+
+/* numeric cell formatting */
+.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.num.current-positive { background: #123c24; color: #baf5d1; font-weight: 600; }
