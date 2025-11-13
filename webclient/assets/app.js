@@ -78,8 +78,13 @@ async function fetchTextMaybe(paths) {
 
 async function loadCsv(filename) {
   const base = state.dataBasePath;
-  // Fixed path; still try root as a dev fallback
-  const txt = await fetchTextMaybe([`${base}${filename}`, `/${filename}`]);
+  // Fixed path; attempt multiple fallbacks including repository root /data folder
+  const txt = await fetchTextMaybe([
+    `${base}${filename}`,              // webclient/data/filename
+    `/webclient/${base}${filename}`,   // absolute path variant (in some static setups)
+    `/data/${filename}`,               // repository root data folder
+    `/${filename}`                     // plain root fallback
+  ]);
   if (!txt) return [];
   return new Promise((resolve) => {
     Papa.parse(txt, {
@@ -431,6 +436,7 @@ async function loadAll() {
 // late additions. Deduplicate by (Invoice ID/Number, Product ID, SKU, Quantity).
 async function tryLoadInvoiceSupplement() {
   const primaryNames = [
+    'ALL_INVOICES_NOV_TO_DATE.csv', // comprehensive November to-date export
     'Invoices_nov_to_date.csv', // explicit provided naming pattern
     'Invoices_current_to_date.csv', // generic pattern (future proof)
   ];
