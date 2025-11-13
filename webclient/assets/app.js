@@ -406,17 +406,48 @@ async function loadAll() {
 }
 
 // Attempt to load a current-month invoice supplement file.
+// If both an explicit to-date file and a full export exist, union them to cover
+// late additions. Deduplicate by (Invoice ID/Number, Product ID, SKU, Quantity).
 async function tryLoadInvoiceSupplement() {
-  const candidates = [
+  const primaryNames = [
     'Invoices_nov_to_date.csv', // explicit provided naming pattern
     'Invoices_current_to_date.csv', // generic pattern (future proof)
-    'Invoice_Items.csv', // fallback full export
   ];
-  for (const name of candidates) {
+  const fallbackName = 'Invoice_Items.csv';
+  let primary = [];
+  for (const name of primaryNames) {
     const rows = await loadCsv(name);
-    if (rows && rows.length) return rows;
+    if (rows && rows.length) { primary = rows; break; }
   }
-  return [];
+  const fallback = await loadCsv(fallbackName);
+  if (!primary.length && !fallback.length) return [];
+
+  // If only one exists, return it
+  if (primary.length && !fallback.length) return primary;
+  if (!primary.length && fallback.length) return fallback;
+
+  // Union with de-duplication
+  const seen = new Set();
+  const keyOf = (r) => [
+    r['Invoice ID'] || r['Invoice Number'] || '',
+    r['Product ID'] || r['Item_ID'] || r['Item ID'] || '',
+    r['SKU'] || r['Item_SKU'] || '',
+    r['Quantity'] || r['Qty'] || r['Total_Quantity'] || ''
+  ].map(x => String(x||'').trim()).join('|');
+  const out = [];
+  const add = (r) => { const k = keyOf(r); if (!seen.has(k)) { seen.add(k); out.push(r); } };
+  primary.forEach(add);
+  fallback.forEach(add);
+
+  // Diagnostics: log coverage window
+  const dates = out.map(r => r['Invoice Date'] || r['Date'] || r['Created Time'] || r['Last Modified Time']).filter(Boolean);
+  const mm = dates.map(d => String(d).slice(0,10)).sort();
+  if (mm.length) {
+    console.log('[Pantera] Invoice supplement rows:', out.length, 'Date range:', mm[0], 'to', mm[mm.length-1]);
+  } else {
+    console.log('[Pantera] Invoice supplement rows:', out.length, 'Date range: unknown');
+  }
+  return out;
 }
 
 function integrateInvoiceSupplement(rows) {
