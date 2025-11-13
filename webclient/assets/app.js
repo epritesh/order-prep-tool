@@ -129,11 +129,14 @@ function parseDate(s) {
   if (!s) return null;
   // Try YYYY-MM or YYYY-MM-DD
   const m = String(s).match(/^(\d{4})-(\d{2})(?:-(\d{2}))?/);
+    // Current month to-date column positioned immediately after Order Qty
+    ...(state.months.length ? [{ key: 'currentMonthToDate', label: `${state.months[state.months.length-1]} (To Date)` }] : []),
   if (m) return new Date(Number(m[1]), Number(m[2])-1, m[3]?Number(m[3]):1);
   const d = new Date(s);
   return isNaN(d) ? null : d;
-}
-
+  const currentMonthKey = monthsDisplayAll[0];
+  const monthsDisplay = monthsDisplayAll.filter(m => m !== currentMonthKey);
+  const monthCols = monthsDisplay.map(m => ({ key: `m:${m}`, label: m }));
 function makeKey(r) {
   const sku = H.sku(r);
   const id = H.itemId(r);
@@ -265,6 +268,11 @@ function render() {
         cells.push(`<td><input type="number" class="order-input" data-key="${escapeHtml(makeKey(r))}" value="${r.orderQty ?? ''}" min="0" step="1"></td>`);
         continue;
       }
+      if (c.key === 'currentMonthToDate') {
+        const tv = r.salesByMonth[currentMonthKey] || 0;
+        cells.push(`<td class="num">${tv ? tv.toLocaleString() : ''}</td>`);
+        continue;
+      }
       if (typeof v === 'number') v = v.toLocaleString();
       if (c.key === 'name' || c.key === 'supplier' || c.key === 'supplierName') {
         const title = v ?? '';
@@ -312,12 +320,13 @@ function render() {
 
 function exportCsvAll() {
   const rows = Array.from(state.byItem.values());
-  const monthsDisplay = [...state.months].reverse();
-  const currentMonthKey = monthsDisplay[0];
-  const header = ['Item ID','SKU','Item Name','Supplier Code','Available Stock','Inventory Cost','Last Purchase Price','Outstanding PO Qty',...monthsDisplay.map((m,i)=> i===0? `${m} (To Date)` : m)];
+  const monthsDisplayAll = [...state.months].reverse();
+  const currentMonthKey = monthsDisplayAll[0];
+  const monthsDisplay = monthsDisplayAll.filter(m => m !== currentMonthKey);
+  const header = ['Item ID','SKU','Item Name','Supplier Code','Available Stock','Inventory Cost','Last Purchase Price','Outstanding PO Qty','Order Qty',`${currentMonthKey} (To Date)`,...monthsDisplay];
   const data = rows.map(r => [
-    r.itemId, r.sku, r.name, r.supplier, r.supplierName || r.lastVendor || '', r.available, r.cost, r.lastPurchasePrice, r.outstandingQty,
-    ...monthsDisplay.map(m => r.salesByMonth[m] || 0)
+    r.itemId, r.sku, r.name, r.supplier, r.supplierName || r.lastVendor || '', r.available, r.cost, r.lastPurchasePrice, r.outstandingQty, r.orderQty || 0,
+    (r.salesByMonth[currentMonthKey]||0), ...monthsDisplay.map(m => r.salesByMonth[m] || 0)
   ]);
   const csv = [header.join(','), ...data.map(row => row.map(safeCsv).join(','))].join('\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -332,12 +341,14 @@ function exportCsvAll() {
 function exportCsvFiltered() {
   // Export only filtered keys and include Order Qty
   const keys = state.filteredKeys.length ? state.filteredKeys : Array.from(state.byItem.keys());
-  const monthsDisplay = [...state.months].reverse();
-  const header = ['Item ID','SKU','Item Name','Supplier Code','Supplier Name','Available Stock','Inventory Cost','Last Purchase Price','Outstanding PO Qty','Order Qty',...monthsDisplay.map((m,i)=> i===0? `${m} (To Date)` : m)];
+  const monthsDisplayAll = [...state.months].reverse();
+  const currentMonthKey = monthsDisplayAll[0];
+  const monthsDisplay = monthsDisplayAll.filter(m => m !== currentMonthKey);
+  const header = ['Item ID','SKU','Item Name','Supplier Code','Supplier Name','Available Stock','Inventory Cost','Last Purchase Price','Outstanding PO Qty','Order Qty',`${currentMonthKey} (To Date)`,...monthsDisplay];
   const rows = keys.map(k => state.byItem.get(k)).filter(Boolean);
   const data = rows.map(r => [
     r.itemId, r.sku, r.name, r.supplier, r.supplierName || r.lastVendor || '', r.available, r.cost, r.lastPurchasePrice, r.outstandingQty, r.orderQty || 0,
-    ...monthsDisplay.map(m => r.salesByMonth[m] || 0)
+    (r.salesByMonth[currentMonthKey]||0), ...monthsDisplay.map(m => r.salesByMonth[m] || 0)
   ]);
   const csv = [header.join(','), ...data.map(row => row.map(safeCsv).join(','))].join('\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
