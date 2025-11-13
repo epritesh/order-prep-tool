@@ -746,6 +746,16 @@ function renderSummary() {
   const invValue = (r && r.available && r.cost) ? (Number(r.available) * Number(r.cost)) : null;
   if (byId('kpiInventoryValue')) byId('kpiInventoryValue').textContent = fmtCRC(invValue);
 
+  // Current month KPI totals across all items
+  const currentMonth = monthKey(new Date());
+  let totalQty = 0; let activeItems = 0;
+  for (const it of state.byItem.values()) {
+    const q = it.salesByMonth[currentMonth] || 0;
+    if (q > 0) { activeItems++; totalQty += q; }
+  }
+  if (byId('kpiCurrentMonthQty')) byId('kpiCurrentMonthQty').textContent = fmt(totalQty);
+  if (byId('kpiCurrentMonthItems')) byId('kpiCurrentMonthItems').textContent = `${activeItems.toLocaleString()} items`;
+
   // Sparkline SVG
   const svg = document.getElementById('sparkline');
   if (!svg) return;
