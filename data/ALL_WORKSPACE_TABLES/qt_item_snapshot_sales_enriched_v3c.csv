@@ -1,1 +1,0 @@
-﻿sb.Product_ID,SKU,sb.Sales_24M_Qty,sb.Sales_24M_Net,db.Avg_Demand_Used,db.Avg_Demand_6M,lp.Last_Purchase_Date,lp.Last_Purchase_Price,Last_Purchase_Date_Fallback,Last_Purchase_Price_Fallback,soh.On_Hand_Qty,soh.On_Hand_Source,itf.Current_Unit_Rate,Coverage_Months,Reorder_Eligibility,Reorder_Flag,Stock_Shortfall,Months_Short,Cost_Delta,Cost_Delta_Pct

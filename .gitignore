@@ -1,1 +1,15 @@
 data/
+# Purge and ignore bulk analytics export directories & large workspace tables
+data/Zoho_Finance_Analytics_EXPORT/
+data/Zoho_Finance_Analytics_partial_export_*/
+data/Zoho_Finance_Analytics(*/
+data/ALL_WORKSPACE_TABLES/
+data/Pantera_-_Inventory_Reorder_Dashboard/
+data/snapshot_enriched/
+data/Inventory_Coverage_Histogram/
+data/DIAG/
+
+# Allow minimal sample CSVs by whitelisting (negated patterns) if ever needed:
+# !data/SalesHistory_Updated_*.csv
+# !data/Purchase_Order.csv
+# !data/Items.csv
