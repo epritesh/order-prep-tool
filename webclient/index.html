@@ -45,11 +45,12 @@
   <section class="sku-controls">
     <div class="sku-left">
   <div class="lookup" style="display:flex; gap:6px; align-items:center; margin-bottom:6px;">
-    <input id="skuSearch" type="text" placeholder="Enter SKU (e.g., 800-4534)" style="flex:1; min-width:220px; padding:6px 8px;" />
-    <button id="lookupBtn" class="btn">Lookup SKU</button>
+    <input id="skuSearch" type="text" placeholder="Quick single SKU lookup (e.g., 800-4534)" aria-label="Single SKU lookup" style="flex:1; min-width:220px; padding:6px 8px;" />
+    <button id="lookupBtn" class="btn" title="Lookup and focus one SKU">Lookup</button>
   </div>
-  <label for="skuList">Paste SKUs (one per line, comma, or space; wildcards * and ? supported):</label>
-  <textarea id="skuList" placeholder="800-4534&#10;118-119&#10;..."></textarea>
+  <label for="skuList" style="font-weight:600;">Filter multiple SKUs / patterns:</label>
+  <textarea id="skuList" aria-label="Multi-SKU filter list" placeholder="800-4534\n118-119\nABC-* (wildcard)\n..."></textarea>
+  <small style="display:block; margin-top:4px; color:#666;">Use * and ? wildcards. Commas/space/newlines all split tokens. The single lookup above focuses one SKU without filtering others.</small>
     </div>
     <div class="sku-right">
   <button id="applySkusBtn" class="btn primary">Apply SKUs</button>
