@@ -442,11 +442,15 @@ async function tryLoadInvoiceSupplement() {
   ];
   const fallbackName = 'Invoice_Items.csv';
   let primary = [];
+  const attemptLog = [];
   for (const name of primaryNames) {
     const rows = await loadCsv(name);
+    attemptLog.push({ name, rows: rows.length });
     if (rows && rows.length) { primary = rows; break; }
   }
   const fallback = await loadCsv(fallbackName);
+  attemptLog.push({ name: fallbackName, rows: fallback.length });
+  console.log('[Pantera] Invoice supplement load attempts:', attemptLog);
   if (!primary.length && !fallback.length) return [];
 
   // If only one exists, return it
