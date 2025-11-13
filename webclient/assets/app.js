@@ -43,13 +43,17 @@ function setStatus(msg) { el.status.textContent = msg; }
 
 function monthKey(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
 
-function computeLast24Months() {
+// Build an array of the last 24 month keys. By default we INCLUDE the current
+// month so that partial in‑flight sales (e.g. invoices to date) can surface.
+// Pass includeCurrent=false to retain legacy behaviour (exclude current month).
+function computeLast24Months(includeCurrent = true) {
   const now = new Date();
-  // Exclude the current month; start from previous month
-  const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const anchor = includeCurrent
+    ? new Date(now.getFullYear(), now.getMonth(), 1)
+    : new Date(now.getFullYear(), now.getMonth() - 1, 1);
   const months = [];
-  for (let i=23; i>=0; i--) {
-    const d = new Date(start.getFullYear(), start.getMonth()-i, 1);
+  for (let i = 23; i >= 0; i--) {
+    const d = new Date(anchor.getFullYear(), anchor.getMonth() - i, 1);
     months.push(monthKey(d));
   }
   state.months = months;
@@ -345,13 +349,18 @@ function safeCsv(v) {
 
 async function loadAll() {
   setStatus('Loading...');
-  computeLast24Months();
+  // Include current month to allow partial invoice merge
+  computeLast24Months(true);
 
   const salesName = await resolveSalesFilename();
   const [sales, pos] = await Promise.all([
     loadCsv(salesName),
     loadCsv('Purchase_Order.csv'),
   ]);
+  // Optional current month supplemental invoices (partial month to date)
+  // Try a specific to-date file, then fall back to a generic invoice export.
+  const invoiceSupplement = await tryLoadInvoiceSupplement();
+
   // Items master: allow both "Items.csv" and fallback to "Item.csv"
   let items = await loadCsv('Items.csv');
   if (!items || items.length === 0) {
@@ -361,25 +370,89 @@ async function loadAll() {
   state.poRows = pos;
   state.itemRows = items;
 
+  // Merge supplemental invoice quantities into the current month bucket
+  if (invoiceSupplement?.length) {
+    integrateInvoiceSupplement(invoiceSupplement);
+  }
+
   aggregate();
   applyPersistedOrderQtys();
   render();
+  updateDataStamp(invoiceSupplement?.length || 0);
   // Clearer status: aggregated vs items master and total with outstanding POs
   const outstandingCount = Array.from(state.byItem.values()).reduce((n, r) => n + ((r.outstandingQty||0) > 0 ? 1 : 0), 0);
   setStatus(`Aggregated items: ${state.byItem.size.toLocaleString()} • Items master: ${items.length.toLocaleString()} • Outstanding POs: ${outstandingCount.toLocaleString()} items`);
 }
 
-async function resolveSalesFilename() {
-  // Prefer explicit 2025 Oct file name pattern, else fallback to SalesHistory_Updated_Oct2025.csv
+// Attempt to load a current-month invoice supplement file.
+async function tryLoadInvoiceSupplement() {
   const candidates = [
-    'SalesHistory_Updated_Oct2025.csv',
+    'Invoices_nov_to_date.csv', // explicit provided naming pattern
+    'Invoices_current_to_date.csv', // generic pattern (future proof)
+    'Invoice_Items.csv', // fallback full export
   ];
-  // Also generate guess for current month label
+  for (const name of candidates) {
+    const rows = await loadCsv(name);
+    if (rows && rows.length) return rows;
+  }
+  return [];
+}
+
+function integrateInvoiceSupplement(rows) {
+  const currentMonth = monthKey(new Date());
+  // Build a map key -> aggregated quantity + net sales if present
+  for (const r of rows) {
+    // Derive month from Created Time or Last Modified Time
+    const created = r['Created Time'] || r['Last Modified Time'] || r['Date'] || r['Invoice Date'];
+    let m = null;
+    if (created) {
+      const mm = String(created).match(/^(\d{4})-(\d{2})/);
+      if (mm) m = mm[0];
+    }
+    if (!m) m = currentMonth; // assume current month if missing
+    if (m !== currentMonth) continue; // only merge current month partials
+    const qty = num(r['Quantity'] || r['Qty'] || r['Total_Quantity']);
+    if (qty <= 0) continue;
+    // Convert invoice row into a synthetic sales row for aggregation pipeline
+    state.salesRows.push({
+      'Item_ID': r['Item ID'] || r['Item_ID'] || r['Product ID'],
+      'Product ID': r['Product ID'] || r['Item_ID'] || r['Item ID'],
+      'Item_SKU': r['SKU'] || r['Item_SKU'],
+      'Item Name': r['Item Name'] || r['Item_Name'],
+      'Item_Name': r['Item_Name'] || r['Item Name'],
+      'Month_Year': m,
+      'Total_Quantity': qty,
+      'Net_Sales': num(r['Sub Total (BCY)'] || r['Total (BCY)'] || r['Sales']),
+    });
+  }
+}
+
+function updateDataStamp(supplementCount) {
+  const stampEl = document.getElementById('dataStamp');
+  if (!stampEl) return;
+  // Determine the latest month with any non-zero quantity across items
+  const monthsDesc = [...state.months].reverse(); // recent first
+  let latest = monthsDesc.find(m => {
+    return Array.from(state.byItem.values()).some(r => (r.salesByMonth[m] || 0) > 0);
+  }) || monthsDesc[0];
+  const loadedTs = new Date();
+  const partialNote = (latest === monthKey(new Date()) && supplementCount > 0) ? ' (partial month)' : '';
+  const iso = loadedTs.toISOString().slice(0,19).replace('T',' ');
+  stampEl.textContent = `Data current through ${latest}${partialNote} • Loaded ${iso}`;
+}
+
+async function resolveSalesFilename() {
+  // Build dynamic candidate list: current month (if present), previous month,
+  // and a static fallback (Oct 2025 kept for historical compatibility).
   const now = new Date();
   const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  // Use previous month to avoid selecting a month with no data yet
+  const candidates = ['SalesHistory_Updated_Oct2025.csv'];
   const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  candidates.unshift(`SalesHistory_Updated_${monthNames[prev.getMonth()]}${prev.getFullYear()}.csv`);
+  const currentName = `SalesHistory_Updated_${monthNames[now.getMonth()]}${now.getFullYear()}.csv`;
+  const prevName = `SalesHistory_Updated_${monthNames[prev.getMonth()]}${prev.getFullYear()}.csv`;
+  // Try current first (may be partial), then previous, then static fallback
+  candidates.unshift(prevName);
+  candidates.unshift(currentName);
   for (const c of candidates) {
     const txt = await fetchTextMaybe([`${state.dataBasePath}${c}`, `/${c}`]);
     if (txt) return c;

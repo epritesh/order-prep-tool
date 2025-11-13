@@ -4,6 +4,28 @@
    ============================================================= */
 
 /* -------------------------------------------------------------
+  Helper: De-dot headers when selecting from another Query Table
+  Why: `SELECT * FROM "some_qt" t` yields dotted labels like t.Item_ID.
+  Fix: Explicitly select and alias each column to a clean identifier.
+  Tip: Use tools/analytics/generate_zoho_select_list.ps1 to emit the list.
+  Example skeleton:
+   
+  -- CREATE QUERY TABLE qt_item_snapshot_clean AS
+  SELECT
+    "t"."Item_ID"               AS Item_ID,
+    "t"."SKU"                    AS SKU,
+    "t"."Item_Name"              AS Item_Name,
+    "t"."On_Hand_Qty"            AS On_Hand_Qty,
+    "t"."Avg_Demand_Used"        AS Avg_Demand_Used,
+    "t"."Coverage_Months"        AS Coverage_Months,
+    "t"."Current_Unit_Rate"      AS Current_Unit_Rate,
+    "t"."Last_Purchase_Date"     AS Last_Purchase_Date,
+    "t"."Last_Purchase_Price"    AS Last_Purchase_Price
+    -- ... include all needed columns, no dots in final aliases
+  FROM "item_snapshot_enriched_flat_tbl_v2" "t";
+  ------------------------------------------------------------- */
+
+/* -------------------------------------------------------------
    1. Last Purchase Base (qt_last_purchase_base)
    ------------------------------------------------------------- */
 SELECT

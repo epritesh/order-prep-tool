@@ -1,3 +1,41 @@
+## Fixing dotted headers (clean identifiers for charts)
+
+When you build a new Query Table using an existing Query Table as the source and write `SELECT * FROM "ExistingQT" t`, Zoho bakes the alias into each column label (e.g., `t.Item_ID`). These "dotted headers" make formulas and some chart builders awkward because you must quote the name everywhere and certain UIs don’t accept it.
+
+Here are three safe ways to remove the dots and keep your reports happy:
+
+1) Explicit SELECT with clean aliases (recommended)
+- Create a new Query Table and explicitly list/alias every column:
+  - Example pattern: `SELECT "t"."Item_ID" AS Item_ID, "t"."SKU" AS SKU, ... FROM "item_snapshot_enriched_flat_tbl_v2" "t";`
+- To avoid typing, use the helper script added to this repo: `tools/analytics/generate_zoho_select_list.ps1`.
+  - Input: `data/item_snapshot_enriched_flat_tbl_v2.csv` (has the canonical header set).
+  - Output: a paste‑ready SELECT list with quotes and `AS` renames to clean identifiers.
+  - After pasting, add any computed columns you need below the list.
+
+2) Import a Data Table from the CSV
+- Export/locate `item_snapshot_enriched_flat_tbl_v2.csv` and import it as a Data Table in Zoho.
+- Pros: clean headers instantly; charts work smoothly. Cons: you’ll need to manage refresh (re‑import or schedule).
+
+3) Manual rename in Design view
+- Save the Query Table, open Design, and rename each field to remove the `t.` prefix. Works, but tedious for many columns.
+
+Why this happens
+- `SELECT *` from another QT + alias leads Zoho to prefix the column labels with the alias. Prefer explicit `SELECT` with `AS` to control final names.
+
+Quick start using the helper script
+- In a PowerShell terminal (Windows), run the script and paste the result into a new Zoho Query Table:
+  - Script path: `tools/analytics/generate_zoho_select_list.ps1`
+  - Typical usage:
+    - Input CSV: `data/item_snapshot_enriched_flat_tbl_v2.csv`
+    - Table name in Zoho: `item_snapshot_enriched_flat_tbl_v2`
+    - Alias: `t`
+  - The output starts with:
+    `SELECT\n  "t"."Item_ID" AS Item_ID,\n  "t"."SKU" AS SKU,\n  ...\nFROM "item_snapshot_enriched_flat_tbl_v2" "t";`
+
+Notes
+- If your source Query Table has extra computed columns not present in the CSV, append them manually after pasting the generated list.
+- Keep identifiers simple: letters, digits, and underscores. Avoid spaces and punctuation in final aliases.
+
 # Pantera Inventory & Reorder Dashboard Guide (Zoho Analytics)
 
 This guide walks you through building the dashboards now that the enrichment + KPI query tables exist. It is tailored to the SQL bundle in `queries.sql` and the materialized flat snapshot (`item_snapshot_enriched_flat_tbl_v2`).

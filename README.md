@@ -59,6 +59,21 @@ python -m http.server 8080
 - You can add more columns to Items.csv; the app uses heuristics to find `Available_Stock` and `Cost`.
 - Click a row (or use the pager with "Show current only") to update the KPI cards and sparkline for the current item.
 
+### Data freshness indicator
+
+The header shows a stamp like:
+
+```
+Data current through 2025-11 (partial month) • Loaded 2025-11-08 14:32:10
+```
+
+- "Data current through" reflects the most recent month (from the last 24) with non‑zero sales.
+- If the current month is included and supplemented by invoice rows (e.g. `Invoices_nov_to_date.csv` / `Invoice_Items.csv`), the stamp appends `(partial month)`.
+- Load time is the client load timestamp (browser local time).
+- The app now includes the current month in the 24‑month window to surface in‑progress sales.
+
+Supplemental invoices are merged into the current month as additional sales rows (quantity + net sales heuristic). If no invoice supplement exists the current month may still appear with zeroes; the indicator will then fall back to the most recent populated prior month.
+
 ## Optional passcode gate (client-only)
 
 For a lightweight barrier (not secure), the app can prompt for a passcode before loading data.
