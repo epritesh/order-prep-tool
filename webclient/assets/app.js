@@ -458,6 +458,9 @@ async function tryLoadInvoiceSupplement() {
 function integrateInvoiceSupplement(rows) {
   const currentMonth = monthKey(new Date());
   let injected = 0; // diagnostics counter
+  let skippedMonth = 0;
+  let skippedZeroQty = 0;
+  let total = 0;
   // Build quick crosswalks from Items master to recover missing SKU/ID
   const skuById = new Map();
   const nameById = new Map();
@@ -469,6 +472,7 @@ function integrateInvoiceSupplement(rows) {
     if (id && nm) nameById.set(String(id), String(nm));
   }
   for (const r of rows) {
+    total++;
     // Derive month from Created Time or Last Modified Time
     const created = r['Invoice Date'] || r['Created Time'] || r['Last Modified Time'] || r['Date'];
     let m = null;
@@ -477,9 +481,9 @@ function integrateInvoiceSupplement(rows) {
       if (mm) m = mm[0];
     }
     if (!m) m = currentMonth; // assume current month if missing
-    if (m !== currentMonth) continue; // only merge current month partials
+    if (m !== currentMonth) { skippedMonth++; continue; } // only merge current month partials
     const qty = num(r['Quantity'] || r['Qty'] || r['Total_Quantity']);
-    if (qty <= 0) continue;
+    if (qty <= 0) { skippedZeroQty++; continue; }
     // Recover identifiers/sku where missing
     const rawId = r['Product ID'] || r['Item_ID'] || r['Item ID'];
     let rawSku = r['SKU'] || r['Item_SKU'];
@@ -499,8 +503,26 @@ function integrateInvoiceSupplement(rows) {
     });
     injected++;
   }
-  console.log('[Pantera] Integrated invoice rows for current month:', injected, 'Target month:', currentMonth);
+  if (!injected) {
+    console.warn('[Pantera] Invoice integration produced ZERO injected rows', { currentMonth, total, skippedMonth, skippedZeroQty });
+  } else {
+    console.log('[Pantera] Integrated invoice rows for current month:', injected, 'Target month:', currentMonth, 'Total source rows:', total, 'Skipped(other month):', skippedMonth, 'Skipped(qty<=0):', skippedZeroQty);
+  }
 }
+
+// Debug helper: log raw sales rows contributing to current month for a given SKU
+window.debugSku = function(sku){
+  const cm = monthKey(new Date());
+  const hits = state.salesRows.filter(r => (H.month(r) === cm) && (H.sku(r) || '').trim() === String(sku).trim());
+  console.log('[Pantera][debugSku] SKU', sku, 'current month rows:', hits.length, hits);
+  const keyHits = Array.from(state.byItem.entries()).filter(([k,v]) => String(v.sku||'').trim() === String(sku).trim());
+  if (keyHits.length){
+    const [k,v] = keyHits[0];
+    console.log('[Pantera][debugSku] Aggregated salesByMonth[current]:', v.salesByMonth[cm], 'Key:', k, v);
+  } else {
+    console.warn('[Pantera][debugSku] No aggregated item found for SKU', sku);
+  }
+};
 
 function updateDataStamp(supplementCount) {
   const stampEl = document.getElementById('dataStamp');
