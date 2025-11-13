@@ -127,16 +127,13 @@ function num(v) {
 
 function parseDate(s) {
   if (!s) return null;
-  // Try YYYY-MM or YYYY-MM-DD
   const m = String(s).match(/^(\d{4})-(\d{2})(?:-(\d{2}))?/);
-    // Current month to-date column positioned immediately after Order Qty
-    ...(state.months.length ? [{ key: 'currentMonthToDate', label: `${state.months[state.months.length-1]} (To Date)` }] : []),
-  if (m) return new Date(Number(m[1]), Number(m[2])-1, m[3]?Number(m[3]):1);
+  if (m) {
+    return new Date(Number(m[1]), Number(m[2]) - 1, m[3] ? Number(m[3]) : 1);
+  }
   const d = new Date(s);
   return isNaN(d) ? null : d;
-  const currentMonthKey = monthsDisplayAll[0];
-  const monthsDisplay = monthsDisplayAll.filter(m => m !== currentMonthKey);
-  const monthCols = monthsDisplay.map(m => ({ key: `m:${m}`, label: m }));
+}
 function makeKey(r) {
   const sku = H.sku(r);
   const id = H.itemId(r);
@@ -197,6 +194,10 @@ function aggregate() {
       }
     }
   }
+  // Diagnostics: summarize current month activity
+  const currentMonth = monthKey(new Date());
+  const activeCount = Array.from(state.byItem.values()).filter(o => (o.salesByMonth[currentMonth] || 0) > 0).length;
+  console.log('[Pantera] Aggregate complete. Items:', state.byItem.size, 'with current-month qty >0:', activeCount, 'Month:', currentMonth);
 }
 
 function baseItem(r) {
@@ -420,10 +421,10 @@ async function tryLoadInvoiceSupplement() {
 
 function integrateInvoiceSupplement(rows) {
   const currentMonth = monthKey(new Date());
-  // Build a map key -> aggregated quantity + net sales if present
+  let injected = 0; // diagnostics counter
   for (const r of rows) {
     // Derive month from Created Time or Last Modified Time
-    const created = r['Created Time'] || r['Last Modified Time'] || r['Date'] || r['Invoice Date'];
+    const created = r['Invoice Date'] || r['Created Time'] || r['Last Modified Time'] || r['Date'];
     let m = null;
     if (created) {
       const mm = String(created).match(/^(\d{4})-(\d{2})/);
@@ -444,7 +445,9 @@ function integrateInvoiceSupplement(rows) {
       'Total_Quantity': qty,
       'Net_Sales': num(r['Sub Total (BCY)'] || r['Total (BCY)'] || r['Sales']),
     });
+    injected++;
   }
+  console.log('[Pantera] Integrated invoice rows for current month:', injected, 'Target month:', currentMonth);
 }
 
 function updateDataStamp(supplementCount) {
