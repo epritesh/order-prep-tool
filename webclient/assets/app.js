@@ -43,6 +43,13 @@ function setStatus(msg) { el.status.textContent = msg; }
 
 function monthKey(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
 
+function formatMonthLabel(key){
+  const [y,m] = key.split('-');
+  const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const idx = Number(m)-1;
+  return `${monthNames[idx]} ${y}`;
+}
+
 // Build an array of the last 24 month keys. By default we INCLUDE the current
 // month so that partial in‑flight sales (e.g. invoices to date) can surface.
 // Pass includeCurrent=false to retain legacy behaviour (exclude current month).
@@ -220,6 +227,8 @@ function render() {
     { key: 'cost', label: 'Inventory Cost' },
     { key: 'lastPurchasePrice', label: 'Last Purchase Price' },
     { key: 'outstandingQty', label: 'Outstanding PO Qty' },
+    // Insert current month to-date summary before order & month detail columns
+    ...(state.months.length ? [{ key: 'currentMonthToDate', label: `Sales ${formatMonthLabel(state.months[state.months.length-1])} To Date` }] : []),
     { key: 'orderQty', label: 'Order Qty' },
   ];
   // Show most recent month on the left by reversing display order
@@ -255,6 +264,12 @@ function render() {
       let v = r[c.key];
       if (c.key === 'orderQty') {
         cells.push(`<td><input type="number" class="order-input" data-key="${escapeHtml(makeKey(r))}" value="${r.orderQty ?? ''}" min="0" step="1"></td>`);
+        continue;
+      }
+      if (c.key === 'currentMonthToDate') {
+        const currentMonthKey = state.months[state.months.length-1]; // last in ascending list
+        const tv = r.salesByMonth[currentMonthKey] || 0;
+        cells.push(`<td class="num">${tv ? tv.toLocaleString() : ''}</td>`);
         continue;
       }
       if (typeof v === 'number') v = v.toLocaleString();
@@ -305,9 +320,11 @@ function render() {
 function exportCsvAll() {
   const rows = Array.from(state.byItem.values());
   const monthsDisplay = [...state.months].reverse();
-  const header = ['Item ID','SKU','Item Name','Supplier Code','Available Stock','Inventory Cost','Last Purchase Price','Outstanding PO Qty',...monthsDisplay];
+  const currentMonthKey = state.months[state.months.length-1];
+  const currentMonthLabel = `Sales ${formatMonthLabel(currentMonthKey)} To Date`;
+  const header = ['Item ID','SKU','Item Name','Supplier Code','Available Stock','Inventory Cost','Last Purchase Price','Outstanding PO Qty',currentMonthLabel,...monthsDisplay];
   const data = rows.map(r => [
-    r.itemId, r.sku, r.name, r.supplier, r.supplierName || r.lastVendor || '', r.available, r.cost, r.lastPurchasePrice, r.outstandingQty,
+    r.itemId, r.sku, r.name, r.supplier, r.supplierName || r.lastVendor || '', r.available, r.cost, r.lastPurchasePrice, r.outstandingQty, (r.salesByMonth[currentMonthKey]||0),
     ...monthsDisplay.map(m => r.salesByMonth[m] || 0)
   ]);
   const csv = [header.join(','), ...data.map(row => row.map(safeCsv).join(','))].join('\n');
@@ -324,10 +341,12 @@ function exportCsvFiltered() {
   // Export only filtered keys and include Order Qty
   const keys = state.filteredKeys.length ? state.filteredKeys : Array.from(state.byItem.keys());
   const monthsDisplay = [...state.months].reverse();
-  const header = ['Item ID','SKU','Item Name','Supplier Code','Supplier Name','Available Stock','Inventory Cost','Last Purchase Price','Outstanding PO Qty','Order Qty',...monthsDisplay];
+  const currentMonthKey = state.months[state.months.length-1];
+  const currentMonthLabel = `Sales ${formatMonthLabel(currentMonthKey)} To Date`;
+  const header = ['Item ID','SKU','Item Name','Supplier Code','Supplier Name','Available Stock','Inventory Cost','Last Purchase Price','Outstanding PO Qty',currentMonthLabel,'Order Qty',...monthsDisplay];
   const rows = keys.map(k => state.byItem.get(k)).filter(Boolean);
   const data = rows.map(r => [
-    r.itemId, r.sku, r.name, r.supplier, r.supplierName || r.lastVendor || '', r.available, r.cost, r.lastPurchasePrice, r.outstandingQty, r.orderQty || 0,
+    r.itemId, r.sku, r.name, r.supplier, r.supplierName || r.lastVendor || '', r.available, r.cost, r.lastPurchasePrice, r.outstandingQty, (r.salesByMonth[currentMonthKey]||0), r.orderQty || 0,
     ...monthsDisplay.map(m => r.salesByMonth[m] || 0)
   ]);
   const csv = [header.join(','), ...data.map(row => row.map(safeCsv).join(','))].join('\n');
