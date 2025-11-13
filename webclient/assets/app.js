@@ -327,6 +327,19 @@ function render() {
   renderSummary();
 }
 
+// Debug rendering helper: logs aggregated row and month cell values after a render
+window.debugRenderSku = function(sku){
+  const cm = monthKey(new Date());
+  const entry = Array.from(state.byItem.values()).find(o => String(o.sku||'').trim() === String(sku).trim());
+  if(!entry){ console.warn('[Pantera][debugRenderSku] No aggregated entry for SKU', sku); return; }
+  console.log('[Pantera][debugRenderSku] Aggregated salesByMonth current:', entry.salesByMonth[cm], 'All months:', entry.salesByMonth);
+  const rowEl = Array.from(document.querySelectorAll('tr[data-key]')).find(tr => tr.getAttribute('data-key').startsWith(String(sku).trim()+'__'));
+  if(!rowEl){ console.warn('[Pantera][debugRenderSku] No row element found for SKU', sku); return; }
+  const monthTds = rowEl.querySelectorAll('td[data-month]');
+  const map = {}; monthTds.forEach(td => { map[td.getAttribute('data-month')] = td.textContent; });
+  console.log('[Pantera][debugRenderSku] Rendered cell texts:', map);
+};
+
 function exportCsvAll() {
   const rows = Array.from(state.byItem.values());
   const monthsDisplayAll = [...state.months].reverse();
