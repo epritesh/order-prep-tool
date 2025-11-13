@@ -453,6 +453,16 @@ async function tryLoadInvoiceSupplement() {
 function integrateInvoiceSupplement(rows) {
   const currentMonth = monthKey(new Date());
   let injected = 0; // diagnostics counter
+  // Build quick crosswalks from Items master to recover missing SKU/ID
+  const skuById = new Map();
+  const nameById = new Map();
+  for (const it of state.itemRows) {
+    const id = H.itemId(it);
+    const sku = H.sku(it);
+    const nm = H.itemName(it);
+    if (id && sku) skuById.set(String(id), String(sku));
+    if (id && nm) nameById.set(String(id), String(nm));
+  }
   for (const r of rows) {
     // Derive month from Created Time or Last Modified Time
     const created = r['Invoice Date'] || r['Created Time'] || r['Last Modified Time'] || r['Date'];
@@ -465,13 +475,19 @@ function integrateInvoiceSupplement(rows) {
     if (m !== currentMonth) continue; // only merge current month partials
     const qty = num(r['Quantity'] || r['Qty'] || r['Total_Quantity']);
     if (qty <= 0) continue;
+    // Recover identifiers/sku where missing
+    const rawId = r['Product ID'] || r['Item_ID'] || r['Item ID'];
+    let rawSku = r['SKU'] || r['Item_SKU'];
+    if (!rawSku && rawId && skuById.has(String(rawId))) rawSku = skuById.get(String(rawId));
+    const rawName = r['Item Name'] || r['Item_Name'] || (rawId && nameById.get(String(rawId))) || '';
+
     // Convert invoice row into a synthetic sales row for aggregation pipeline
     state.salesRows.push({
-      'Item_ID': r['Item ID'] || r['Item_ID'] || r['Product ID'],
-      'Product ID': r['Product ID'] || r['Item_ID'] || r['Item ID'],
-      'Item_SKU': r['SKU'] || r['Item_SKU'],
-      'Item Name': r['Item Name'] || r['Item_Name'],
-      'Item_Name': r['Item_Name'] || r['Item Name'],
+      'Item_ID': rawId,
+      'Product ID': rawId,
+      'Item_SKU': rawSku,
+      'Item Name': rawName,
+      'Item_Name': rawName,
       'Month_Year': m,
       'Total_Quantity': qty,
       'Net_Sales': num(r['Sub Total (BCY)'] || r['Total (BCY)'] || r['Sales']),
