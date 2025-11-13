@@ -111,9 +111,10 @@
 
   <script src="assets/pass-config.js"></script>
   <script>
-    // Optional embedded minimal invoice rows fallback (only current month, limited columns) – populated manually if hosting excludes large CSVs.
+    // Embedded minimal invoice rows fallback (aggregated per item) – populated if host blocks CSV fetch.
     window.__PANERA_EMBED_INVOICES__ = window.__PANERA_EMBED_INVOICES__ || [];
   </script>
+  <script src="assets/invoices-embed.js"></script>
   <script type="module" src="assets/app.js"></script>
   <!-- toast container -->
   <div id="toast"></div>
