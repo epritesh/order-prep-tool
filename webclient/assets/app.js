@@ -465,6 +465,12 @@ async function tryLoadInvoiceSupplement() {
   console.log('[Pantera] Invoice supplement load attempts:', attemptLog);
   if (!primary.length && !fallback.length) return [];
 
+  // If host fails to serve large files (>1MB) we can fall back to an embedded trimmed dataset (injected at build time).
+  if (!primary.length && !fallback.length && window.__PANERA_EMBED_INVOICES__) {
+    console.warn('[Pantera] Using embedded invoice supplement fallback');
+    return window.__PANERA_EMBED_INVOICES__;
+  }
+
   // If only one exists, return it
   if (primary.length && !fallback.length) return primary;
   if (!primary.length && fallback.length) return fallback;
